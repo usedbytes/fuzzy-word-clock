@@ -52,6 +52,9 @@ $(PROJECT).hex: $(PROJECT).elf
 $(PROJECT).elf: $(OBJECTS) $(LINKER_SCRIPT)
 	$(CC) $(LDFLAGS) $(OBJECTS) -o $(PROJECT).elf
 
+$(PROJECT).lss: $(PROJECT).elf
+	$(OBJDUMP) -h -S $< > $@
+
 .PHONY: stats
 stats: $(PROJECT).elf
 	$(OBJDUMP) -th $(PROJECT).elf
