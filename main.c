@@ -1,7 +1,10 @@
 #include <stdint.h>
+#include <string.h>
 #include <stdbool.h>
 
 #include "LPC11Uxx.h"
+#include "usart.h"
+#include "ds1302.h"
 
 #define RED_BIT   (1 << 2)
 #define GREEN_BIT (1 << 23)
@@ -147,6 +150,13 @@ int main(void) {
 	SysTick_Config(SystemCoreClock/1000);
 
 	LPC_GPIO->DIR[1] = (1 << 2) | (1 << 23) | (1 << 24);
+
+	/* We're using some JTAG pins for the RTC. Unlike other pins,
+	 * they don't default to GPIO :-(
+	 */
+	LPC_IOCON->TDO_PIO0_13 |= 1;
+	LPC_IOCON->TMS_PIO0_12 |= 1;
+	LPC_IOCON->TDI_PIO0_11 |= 1;
 
 	init_timer16_0();
 	sat = 0xffff;
