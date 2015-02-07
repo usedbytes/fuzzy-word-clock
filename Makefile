@@ -67,6 +67,10 @@ stats: $(PROJECT).elf
 	$(OBJDUMP) -th $(PROJECT).elf
 	$(SIZE) $(PROJECT).elf
 
+.PHONY: isp
+isp: $(PROJECT)_checksum.bin
+	dd if=$< conv=nocreat,notrunc of=/media/removable/CRP\ DISABLD/firmware.bin
+
 .PHONY: clean
 clean:
 	$(REMOVE) -r $(OBJDIR)
