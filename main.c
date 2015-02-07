@@ -30,8 +30,8 @@ struct pwm_16b {
 
 struct pwm_16b pwm0 = {
 	LPC_CT16B0,
-	&LPC_GPIO->PIN[1],
-	{ RED_BIT, GREEN_BIT, BLUE_BIT },
+	&LPC_GPIO->PIN[0],
+	{ 0x3 << 9, 0x3 << 11, 0x3 << 13 },
 	{ 0, 0, 0 },
 };
 
@@ -142,6 +142,26 @@ void hsv2rgb(uint32_t h, uint16_t s, uint16_t v, uint16_t *rgb)
 	}
 }
 
+void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val)
+{
+	*reg &= ~mask;
+	*reg |= val & mask;
+}
+
+void setup_leds(void)
+{
+	/* Set all our LED pins as GPIO outputs */
+	set_with_mask(&LPC_IOCON->PIO0_8, 0x3, 0x0);
+	set_with_mask(&LPC_IOCON->PIO0_9, 0x3, 0x0);
+	set_with_mask(&LPC_IOCON->SWCLK_PIO0_10, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TDI_PIO0_11, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TMS_PIO0_12, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TDO_PIO0_13, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TRST_PIO0_14, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->SWDIO_PIO0_15, 0x3, 0x1);
+	LPC_GPIO->DIR[0] |= (0xFF << 8);
+}
+
 int main(void) {
 	uint32_t hue = 0;
 	uint16_t rgb[3], sat, val;
@@ -149,18 +169,12 @@ int main(void) {
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
 
-	LPC_GPIO->DIR[1] = (1 << 2) | (1 << 23) | (1 << 24);
+	//LPC_GPIO->DIR[1] = (1 << 2) | (1 << 23) | (1 << 24) | (1 << 31);
 
-	/* We're using some JTAG pins for the RTC. Unlike other pins,
-	 * they don't default to GPIO :-(
-	 */
-	LPC_IOCON->TDO_PIO0_13 |= 1;
-	LPC_IOCON->TMS_PIO0_12 |= 1;
-	LPC_IOCON->TDI_PIO0_11 |= 1;
-
+	setup_leds();
 	init_timer16_0();
 	sat = 0xffff;
-	val = 0x1000;
+	val = 0x8000;
 	while (1) {
 		for (hue = 0; hue < 0xFFFF * 6; hue += 100) {
 			hsv2rgb(hue, sat, val, rgb);
