@@ -18,7 +18,8 @@ void SysTick_Handler(void) {
 
 void delay_ms(uint32_t ms) {
 	uint32_t now = msTicks;
-	while ((msTicks-now) < ms);
+	while ((msTicks-now) < ms)
+		;
 }
 
 struct pwm_16b {
@@ -43,6 +44,9 @@ void TIMER_16_0_Handler(void) {
 	/* Turn all channels off if there was an overflow */
 	if (overflow) {
 		*pwm0.port &= ~(pwm0.pins[0] | pwm0.pins[1] | pwm0.pins[2]);
+		pwm0.timer->MR[0] = pwm0.vals[0];
+		pwm0.timer->MR[1] = pwm0.vals[1];
+		pwm0.timer->MR[2] = pwm0.vals[2];
 	}
 
 	/* Selectively turn them on if there was a match */
@@ -50,7 +54,7 @@ void TIMER_16_0_Handler(void) {
 		uint32_t val = pwm0.timer->MR[channel];
 
 		/* Latch in the new value */
-		pwm0.timer->MR[channel] = pwm0.vals[channel];
+		//pwm0.timer->MR[channel] = pwm0.vals[channel];
 
 		if (status & (1 << channel)) {
 			if (overflow && (val >= 0x8000)) {
@@ -61,6 +65,7 @@ void TIMER_16_0_Handler(void) {
 		}
 	}
 	LPC_CT16B0->IR = status;
+	return;
 }
 
 void init_timer16_0()
@@ -85,7 +90,7 @@ void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint16_t value)
 	} else {
 		pwm->timer->MCR &= ~(1 << (channel * 3));
 		*pwm->port &= ~pwm->pins[channel];
-		pwm->vals[channel] = 0;
+		pwm->vals[channel] = 0xffff;
 	}
 }
 
@@ -97,7 +102,11 @@ void hsv2rgb(uint32_t h, uint16_t s, uint16_t v, uint16_t *rgb)
 	uint32_t min = (max * (0x10000 - s)) >> 16;
 	uint32_t range = max - min;
 	uint32_t fade = (range * offset) >> 16;
-	uint32_t level = section & 1 ? min + fade : max - fade;
+	int32_t level = section & 1 ? min + fade : max - fade;
+	if (level > 0xffff)
+		level = 0xffff;
+	else if (level < 0)
+		level = 0;
 
 	/*
 	101  R <g !b
@@ -164,7 +173,8 @@ void setup_leds(void)
 
 int main(void) {
 	uint32_t hue = 0;
-	uint16_t rgb[3], sat, val;
+	uint16_t rgb[3], sat;
+	uint32_t val;
 	SystemInit();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
