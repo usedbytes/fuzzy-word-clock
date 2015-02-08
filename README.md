@@ -44,7 +44,7 @@
 |       42 |       94 |              |
 |       43 |       95 |              |
 |       44 |       96 | Vdd          |
-|       45 |       97 |              |
+|       45 |       97 | CT32B0_CAP0  | Connect to ISP pull-down switch
 |       46 |       98 | RXD          | UART Pins used by bootloader
 |       47 |       99 | TXD          | UART Pins used by bootloader
 |       48 |      100 |              |
