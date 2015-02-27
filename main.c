@@ -175,6 +175,7 @@ int main(void) {
 	uint32_t hue = 0;
 	uint16_t rgb[3], sat;
 	uint32_t val;
+	struct rtc_date date = { 0 };
 	SystemInit();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
@@ -183,6 +184,17 @@ int main(void) {
 
 	setup_leds();
 	init_timer16_0();
+
+	rtc_init();
+	usart_init(USART_BOOTLOADER);
+	rtc_write_date(&date);
+
+	while (1) {
+		delay_ms(1000);
+		rtc_read_date(&date);
+		usart_send((char *)&date, 8);
+	}
+
 	sat = 0xffff;
 	val = 0x8000;
 	while (1) {

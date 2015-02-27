@@ -10,9 +10,9 @@
 |        8 |        8 | Vdd          |
 |        9 |        9 |              |
 |       10 |       10 |              |
-|       11 |       11 |              |
-|       12 |       12 |              |
-|       13 |       26 |              |
+|       11 |       11 | PIO1_26      | RTC RST
+|       12 |       12 | PIO1_27      | RTC IO
+|       13 |       26 | PIO1_20      | RTC SCK
 |       14 |       27 | USB_VBUS     | Connect to Vdd (with jumper)
 |       15 |       28 |              |
 |       16 |       29 |              |

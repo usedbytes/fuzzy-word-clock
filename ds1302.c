@@ -25,12 +25,12 @@
 #include "LPC11Uxx.h"
 #include "ds1302.h"
 
-#define RTC_DDR  LPC_GPIO->DIR[0]
-#define RTC_PORT LPC_GPIO->PIN[0]
-#define RTC_PIN  LPC_GPIO->PIN[0]
-#define RTC_CE   13
-#define RTC_IO   12
-#define RTC_SCK  11
+#define RTC_DDR  LPC_GPIO->DIR[1]
+#define RTC_PORT LPC_GPIO->PIN[1]
+#define RTC_PIN  LPC_GPIO->PIN[1]
+#define RTC_CE   26
+#define RTC_IO   27
+#define RTC_SCK  20
 #define DELAY_US 5
 
 /* I wouldn't trust this to be too accurate... */
