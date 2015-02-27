@@ -6,9 +6,19 @@
 #include "usart.h"
 #include "ds1302.h"
 
-#define RED_BIT   (1 << 2)
-#define GREEN_BIT (1 << 23)
-#define BLUE_BIT  (1 << 24)
+#define N_MEALS     5
+#define N_COURSES   3
+#define BREAKFAST   0
+#define LUNCH       1
+#define HOME        2
+#define DINNER      3
+#define BED         4
+#define NEARLY      5
+#define PAST        6
+#define ITS_TIME    7
+#define LED(x)      (1 << ((x) + 8))
+#define NEARLY_THRESH 8
+#define PAST_THRESH   8
 
 volatile uint32_t msTicks = 0;
 
@@ -94,63 +104,6 @@ void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint16_t value)
 	}
 }
 
-void hsv2rgb(uint32_t h, uint16_t s, uint16_t v, uint16_t *rgb)
-{
-	int section = h / 0x10000;
-	uint16_t offset = h % 0x10000;
-	uint32_t max = v;
-	uint32_t min = (max * (0x10000 - s)) >> 16;
-	uint32_t range = max - min;
-	uint32_t fade = (range * offset) >> 16;
-	int32_t level = section & 1 ? min + fade : max - fade;
-	if (level > 0xffff)
-		level = 0xffff;
-	else if (level < 0)
-		level = 0;
-
-	/*
-	101  R <g !b
-	000 >r  G !b
-	001 !r  G <b
-	010 !r >g  B
-	011 <r !g  B
-	100  R !g >B
-	*/
-
-	switch (section) {
-	case 0:
-		rgb[0] = level;
-		rgb[1] = max;
-		rgb[2] = min;
-		break;
-	case 1:
-		rgb[0] = min;
-		rgb[1] = max;
-		rgb[2] = level;
-		break;
-	case 2:
-		rgb[0] = min;
-		rgb[1] = level;
-		rgb[2] = max;
-		break;
-	case 3:
-		rgb[0] = level;
-		rgb[1] = min;
-		rgb[2] = max;
-		break;
-	case 4:
-		rgb[0] = max;
-		rgb[1] = min;
-		rgb[2] = level;
-		break;
-	case 5:
-		rgb[0] = max;
-		rgb[1] = level;
-		rgb[2] = min;
-		break;
-	}
-}
-
 void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val)
 {
 	*reg &= ~mask;
@@ -172,39 +125,22 @@ void setup_leds(void)
 }
 
 int main(void) {
-	uint32_t hue = 0;
-	uint16_t rgb[3], sat;
-	uint32_t val;
 	struct rtc_date date = { 0 };
+
 	SystemInit();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
 
-	//LPC_GPIO->DIR[1] = (1 << 2) | (1 << 23) | (1 << 24) | (1 << 31);
-
 	setup_leds();
-	init_timer16_0();
-
 	rtc_init();
 	usart_init(USART_BOOTLOADER);
-	rtc_write_date(&date);
+	init_timer16_0();
 
+	rtc_write_date(&date);
 	while (1) {
 		delay_ms(1000);
 		rtc_read_date(&date);
 		usart_send((char *)&date, 8);
-	}
-
-	sat = 0xffff;
-	val = 0x8000;
-	while (1) {
-		for (hue = 0; hue < 0xFFFF * 6; hue += 100) {
-			hsv2rgb(hue, sat, val, rgb);
-			pwm_set(&pwm0, 0, rgb[0]);
-			pwm_set(&pwm0, 1, rgb[1]);
-			pwm_set(&pwm0, 2, rgb[2]);
-			delay_ms(1);
-		}
 	}
 
 	return 0;
