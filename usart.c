@@ -38,15 +38,32 @@
 #define INTID_RDA 0x2
 #define INTID_CTI 0x6
 
-void usart_init()
+struct usart_pincfg {
+	__IO uint32_t *regs[2];
+	uint32_t vals[2];
+};
+
+static const struct usart_pincfg lpc11u24_usart_pincfg[] = {
+	[USART_BOOTLOADER] = {
+		{ &LPC_IOCON->PIO0_18, &LPC_IOCON->PIO0_19 },
+		{ 0x11, 0x11 },
+	},
+	[USART_PIO1_26_27] = {
+		{ &LPC_IOCON->PIO1_26, &LPC_IOCON->PIO1_27 },
+		{ 0x12, 0x12 },
+	},
+};
+
+void usart_init(enum usart_select pins)
 {
+	const struct usart_pincfg *pincfg = &lpc11u24_usart_pincfg[pins];
 	/* Turn on the clock */
 	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 12);
 	LPC_SYSCON->UARTCLKDIV = 1;
 
 	/* Set up the pins */
-	LPC_IOCON->PIO1_26 = 0x2; /* RXD */
-	LPC_IOCON->PIO1_27 = 0x2; /* TXD */
+	*pincfg->regs[0] = pincfg->vals[0]; /* RXD */
+	*pincfg->regs[1] = pincfg->vals[1]; /* TXD */
 
 	/*
 	Baud rate = PCLK / (16 x [DLM:DLL] x (1 + DivAddVal/MulVal))

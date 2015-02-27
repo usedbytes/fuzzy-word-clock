@@ -26,11 +26,16 @@
 
 #include "LPC11Uxx.h"
 
+enum usart_select {
+	USART_BOOTLOADER = 0,
+	USART_PIO1_26_27,
+};
+
 /* Initialise the USART
  *
- * Set up the USART on PIO1_26 and PIO1_27, 115200 8n1
+ * Set up the USART on the selected pins, 115200 8n1
  */
-void usart_init(void);
+void usart_init(enum usart_select pins);
 
 /* Send data over the USART
  *
