@@ -6,6 +6,7 @@
 #include "usart.h"
 #include "ds1302.h"
 
+#define MAGIC_MARKER 0x42
 #define N_MEALS     5
 #define N_COURSES   3
 #define BREAKFAST   0
@@ -125,7 +126,8 @@ void setup_leds(void)
 }
 
 int main(void) {
-	struct rtc_date date = { 0 };
+	struct rtc_date date;
+	uint8_t magic;
 
 	SystemInit();
 	SystemCoreClockUpdate();
@@ -136,7 +138,24 @@ int main(void) {
 	usart_init(USART_BOOTLOADER);
 	init_timer16_0();
 
-	rtc_write_date(&date);
+	usart_send("Hello", 5);
+
+	magic = rtc_peek(0x0);
+	if (magic != MAGIC_MARKER)
+	{
+		struct rtc_date default_date = {
+			.date = 0x1,
+			.month = 0x1,
+			.year = 0x70,
+		};
+		usart_send("Applying initial config\r\n", 25);
+
+		/* Set default time and shiz */
+		rtc_write_date(&default_date);
+
+		rtc_poke(0x0, MAGIC_MARKER);
+	}
+
 	while (1) {
 		delay_ms(1000);
 		rtc_read_date(&date);

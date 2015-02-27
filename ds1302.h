@@ -19,7 +19,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
 #include <stdint.h>
 
 struct rtc_date {
@@ -33,6 +32,14 @@ struct rtc_date {
 	uint8_t write_protect;
 };
 
+/* Initialise the RTC port */
 void rtc_init(void);
+/* Burst read/write clock memory */
 void rtc_read_date(struct rtc_date *data);
 void rtc_write_date(struct rtc_date *data);
+/* Burst read/write RAM */
+void rtc_read_ram(uint8_t *data, unsigned int len);
+void rtc_write_ram(uint8_t *data, unsigned int len);
+/* Peek/poke RAM location */
+uint8_t rtc_peek(uint8_t addr);
+void rtc_poke(uint8_t addr, uint8_t data);

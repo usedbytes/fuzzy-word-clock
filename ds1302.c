@@ -19,7 +19,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
 #include <stdint.h>
 
 #include "LPC11Uxx.h"
@@ -33,8 +32,17 @@
 #define RTC_SCK  20
 #define DELAY_US 5
 
+#define RTC_READ            (1 << 0)
+#define RTC_WRITE           (0 << 0)
+#define RTC_CMD             (1 << 7)
+#define RTC_RAM             (1 << 6)
+#define RTC_CLOCK           (0 << 6)
+#define RTC_ADDR(__addr) ((__addr & 0x1F) << 1)
+#define RTC_CMD_CLOCK_BURST (RTC_ADDR(0x1F) | RTC_CLOCK | RTC_CMD)
+#define RTC_CMD_RAM_BURST   (RTC_ADDR(0x1F) | RTC_RAM | RTC_CMD)
+
 /* I wouldn't trust this to be too accurate... */
-void _delay_us(uint32_t us)
+static void _delay_us(uint32_t us)
 {
 	while (us) {
 		uint32_t i;
@@ -77,6 +85,39 @@ static void shift_out(uint8_t data)
 	}
 }
 
+static void rtc_cmd(uint8_t cmd)
+{
+	RTC_PORT &= ~((1 << RTC_SCK) | (1 << RTC_IO));
+	RTC_DDR |= (1 << RTC_IO);
+	RTC_PORT |= (1 << RTC_CE);
+	shift_out(cmd);
+
+	if (cmd & RTC_READ) {
+		RTC_PORT &= ~(1 << RTC_IO);
+		RTC_DDR &= ~(1 << RTC_IO);
+	}
+}
+
+static void rtc_read(uint8_t *data, unsigned int len)
+{
+	unsigned int i;
+	for (i = 0; i < len; i++) {
+		shift_in((uint8_t *)data + i);
+	}
+	RTC_PORT &= ~(1 << RTC_CE);
+	_delay_us(DELAY_US);
+}
+
+static void rtc_write(uint8_t *data, unsigned int len)
+{
+	unsigned int i;
+	for (i = 0; i < len; i++) {
+		shift_out(((uint8_t *)data)[i]);
+	}
+	RTC_PORT &= ~(1 << RTC_CE);
+	_delay_us(DELAY_US);
+}
+
 void rtc_init()
 {
 	RTC_DDR = (1 << RTC_CE) | (1 << RTC_SCK);
@@ -84,31 +125,41 @@ void rtc_init()
 
 void rtc_read_date(struct rtc_date *data)
 {
-	uint8_t i;
-	RTC_PORT &= ~((1 << RTC_SCK) | (1 << RTC_IO));
-	RTC_DDR |= (1 << RTC_IO);
-	RTC_PORT |= (1 << RTC_CE);
-	shift_out(0xBF);
-
-	RTC_PORT &= ~(1 << RTC_IO);
-	RTC_DDR &= ~(1 << RTC_IO);
-	for (i = 0; i < 8; i++) {
-		shift_in((uint8_t *)data + i);
-	}
-	RTC_PORT &= ~(1 << RTC_CE);
+	rtc_cmd(RTC_CMD_CLOCK_BURST | RTC_READ);
+	rtc_read((uint8_t *)data, sizeof(*data));
 }
 
 void rtc_write_date(struct rtc_date *data)
 {
-	uint8_t i;
-	RTC_PORT &= ~((1 << RTC_SCK) | (1 << RTC_IO));
-	RTC_DDR |= (1 << RTC_IO);
-	RTC_PORT |= (1 << RTC_CE);
-	shift_out(0xBE);
-
-	for (i = 0; i < 8; i++) {
-		shift_out(((uint8_t *)data)[i]);
-	}
-	RTC_PORT &= ~(1 << RTC_CE);
+	rtc_cmd(RTC_CMD_CLOCK_BURST | RTC_WRITE);
+	rtc_write((uint8_t *)data, sizeof(*data));
 }
 
+void rtc_read_ram(uint8_t *data, unsigned int len)
+{
+	rtc_cmd(RTC_CMD_RAM_BURST | RTC_READ);
+	rtc_read(data, len);
+}
+
+void rtc_write_ram(uint8_t *data, unsigned int len)
+{
+	rtc_cmd(RTC_CMD_RAM_BURST | RTC_WRITE);
+	rtc_write(data, len);
+}
+
+uint8_t rtc_peek(uint8_t addr)
+{
+	uint8_t data;
+	uint8_t cmd = RTC_ADDR(addr) | RTC_CMD | RTC_READ | RTC_RAM;
+	rtc_cmd(cmd);
+	rtc_read(&data, 1);
+
+	return data;
+}
+
+void rtc_poke(uint8_t addr, uint8_t data)
+{
+	uint8_t cmd = RTC_ADDR(addr) | RTC_CMD | RTC_WRITE | RTC_RAM;
+	rtc_cmd(cmd);
+	rtc_write(&data, 1);
+}
