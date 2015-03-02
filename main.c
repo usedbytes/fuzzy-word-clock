@@ -22,6 +22,7 @@
 #define PAST_THRESH   8
 
 volatile uint32_t msTicks = 0;
+struct rtc_date date;
 
 void SysTick_Handler(void) {
 	msTicks++;
@@ -92,6 +93,66 @@ void init_timer16_0()
 	NVIC_EnableIRQ(TIMER_16_0_IRQn);
 }
 
+uint8_t do_write_cmd(void)
+{
+	uint8_t ret;
+	char n;
+	ret = usart_recv(&n, 1);
+	if (ret != 1 || n > 8)
+		return 1;
+	ret = 0;
+	while (ret < n)
+		ret += usart_recv((char *)&date + ret, n - ret);
+	rtc_write_date(&date);
+	rtc_poke(0x0, MAGIC_MARKER);
+	return 0;
+}
+
+uint8_t do_read_cmd(void)
+{
+	uint8_t ret;
+	char n;
+	ret = usart_recv(&n, 1);
+	if (ret != 1 || n > 8)
+		return 1;
+	rtc_read_date(&date);
+	usart_send("<", 1);
+	usart_send((char *)&date, n);
+	return 0;
+}
+
+void program_mode(void)
+{
+	uint8_t ret;
+	char buf;
+	for (;;) {
+		usart_send(">", 1);
+		ret = usart_recv(&buf, 1);
+		switch (buf) {
+		case '?':
+			usart_send("fuzzyclk.v1.0\r\n", 15);
+			ret = 0;
+			break;
+		case 'w':
+			ret = do_write_cmd();
+			break;
+		case 'r':
+			ret = do_read_cmd();
+			break;
+		case 'x':
+			NVIC_SystemReset();
+			/* WIll never get here */
+		default:
+			ret = 1;
+			break;
+		}
+		if (ret)
+			usart_send("ERR\r\n", 5);
+		else if (!ret && buf == 'w')
+			usart_send("OK\r\n", 4);
+	}
+}
+
 void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint16_t value)
 {
 	if (value) {
@@ -126,7 +187,6 @@ void setup_leds(void)
 }
 
 int main(void) {
-	struct rtc_date date;
 	uint8_t magic;
 
 	SystemInit();
@@ -143,17 +203,8 @@ int main(void) {
 	magic = rtc_peek(0x0);
 	if (magic != MAGIC_MARKER)
 	{
-		struct rtc_date default_date = {
-			.date = 0x1,
-			.month = 0x1,
-			.year = 0x70,
-		};
-		usart_send("Applying initial config\r\n", 25);
-
-		/* Set default time and shiz */
-		rtc_write_date(&default_date);
-
-		rtc_poke(0x0, MAGIC_MARKER);
+		usart_send("Entering program mode...\r\n", 26);
+		program_mode();
 	}
 
 	while (1) {
