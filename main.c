@@ -47,6 +47,9 @@ struct pwm_16b pwm0 = {
 	{ 0x3 << 9, 0x3 << 11, 0x3 << 13 },
 	{ 0, 0, 0 },
 };
+uint32_t *fade_in = &pwm0.pins[0];
+uint32_t *fade_out = &pwm0.pins[1];
+uint32_t onscreen = 0;
 
 void TIMER_16_0_Handler(void) {
 	uint32_t status = LPC_CT16B0->IR;
@@ -84,7 +87,7 @@ void init_timer16_0()
 {
 	/* Turn on the clock */
 	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 7);
-	LPC_CT16B0->PR = 4;
+	LPC_CT16B0->PR = 1;
 	/* Use MR3 as overflow interupt */
 	LPC_CT16B0->MR3 = 0x0;
 	LPC_CT16B0->MCR = (1 << 9);
@@ -153,10 +156,20 @@ void program_mode(void)
 	}
 }
 
+static void pwm_start(void)
+{
+	LPC_CT16B0->TCR = 0x1;
+}
+
+static void pwm_stop(void)
+{
+	LPC_CT16B0->TCR = 0x0;
+}
+
 void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint16_t value)
 {
 	if (value) {
-		value = ~value;
+		value = ~(value | 0xFF);
 		pwm->vals[channel] = value;
 		pwm->timer->MCR |= (1 << (channel * 3));
 	} else {
@@ -164,6 +177,29 @@ void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint16_t value)
 		*pwm->port &= ~pwm->pins[channel];
 		pwm->vals[channel] = 0xffff;
 	}
+}
+
+static void do_fade(void)
+{
+	uint8_t level = 255;
+	do {
+		level--;
+		pwm_set(&pwm0, 0, (level << 8));
+		pwm_set(&pwm0, 1, ~(level << 8));
+		delay_ms(15);
+	} while (level);
+}
+
+void display(uint32_t sentence)
+{
+	*fade_in = sentence & ~onscreen;
+	*fade_out = onscreen & ~sentence;
+	onscreen = sentence;
+	pwm_set(&pwm0, 0, 0);
+	pwm_set(&pwm0, 1, 0);
+	pwm_start();
+	do_fade();
+	pwm_stop();
 }
 
 void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val)
@@ -200,6 +236,7 @@ int main(void) {
 
 	usart_send("Hello", 5);
 
+	/*
 	magic = rtc_peek(0x0);
 	if (magic != MAGIC_MARKER)
 	{
@@ -211,6 +248,18 @@ int main(void) {
 		delay_ms(1000);
 		rtc_read_date(&date);
 		usart_send((char *)&date, 8);
+	}
+	*/
+
+	while (1) {
+		uint32_t leds = 1;
+
+		for (leds = 1; leds < 256; leds <<= 1) {
+			display(LED(BREAKFAST) | LED(ITS_TIME));
+			delay_ms(1000);
+			display(LED(HOME) | LED(DINNER));
+			delay_ms(1000);
+		}
 	}
 
 	return 0;
