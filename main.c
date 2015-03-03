@@ -47,38 +47,39 @@ struct pwm_16b pwm0 = {
 	{ 0x3 << 9, 0x3 << 11, 0x3 << 13 },
 	{ 0, 0, 0 },
 };
-uint32_t *fade_in = &pwm0.pins[0];
-uint32_t *fade_out = &pwm0.pins[1];
+uint32_t *fade_out = &pwm0.pins[0];
+uint32_t *fade_in = &pwm0.pins[1];
 uint32_t onscreen = 0;
 
 void TIMER_16_0_Handler(void) {
 	uint32_t status = LPC_CT16B0->IR;
 	bool overflow = status & (1 << 3);
+	uint32_t state = LPC_GPIO->PIN[0];
+	uint32_t to_clear = 0;
+	uint32_t to_set = 0;
 	int channel;
 
-	/* Turn all channels off if there was an overflow */
+	/* Turn enabled channels on if there was an overflow */
 	if (overflow) {
-		*pwm0.port &= ~(pwm0.pins[0] | pwm0.pins[1] | pwm0.pins[2]);
-		pwm0.timer->MR[0] = pwm0.vals[0];
-		pwm0.timer->MR[1] = pwm0.vals[1];
-		pwm0.timer->MR[2] = pwm0.vals[2];
-	}
-
-	/* Selectively turn them on if there was a match */
-	for (channel = 0; channel < 3; channel++) {
-		uint32_t val = pwm0.timer->MR[channel];
-
-		/* Latch in the new value */
-		//pwm0.timer->MR[channel] = pwm0.vals[channel];
-
-		if (status & (1 << channel)) {
-			if (overflow && (val >= 0x8000)) {
-				/* Don't bother turning on because we missed our chance */
-				continue;
-			}
-			*pwm0.port |= (pwm0.pins[channel]);
+		for (channel = 0; channel < 3; channel++) {
+			if (pwm0.vals[channel])
+				to_set |= pwm0.pins[channel];
 		}
 	}
+
+	/* Selectively turn them off if there was a match */
+	for (channel = 0; channel < 3; channel++) {
+		if (status & (1 << channel)) {
+			to_clear |= pwm0.pins[channel];
+			pwm0.timer->MR[channel] = pwm0.vals[channel];
+		}
+	}
+
+	to_clear = ~to_clear;
+	state |= to_set;
+	state &= to_clear;
+	LPC_GPIO->PIN[0] = state;
+
 	LPC_CT16B0->IR = status;
 	return;
 }
@@ -87,7 +88,7 @@ void init_timer16_0()
 {
 	/* Turn on the clock */
 	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 7);
-	LPC_CT16B0->PR = 1;
+	LPC_CT16B0->PR = 4;
 	/* Use MR3 as overflow interupt */
 	LPC_CT16B0->MR3 = 0x0;
 	LPC_CT16B0->MCR = (1 << 9);
@@ -158,6 +159,9 @@ void program_mode(void)
 
 static void pwm_start(void)
 {
+	pwm0.timer->MR[0] = pwm0.vals[0];
+	pwm0.timer->MR[1] = pwm0.vals[1];
+	pwm0.timer->MR[2] = pwm0.vals[2];
 	LPC_CT16B0->TCR = 0x1;
 }
 
@@ -166,26 +170,19 @@ static void pwm_stop(void)
 	LPC_CT16B0->TCR = 0x0;
 }
 
-void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint16_t value)
+void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint8_t value)
 {
-	if (value) {
-		value = ~(value | 0xFF);
-		pwm->vals[channel] = value;
-		pwm->timer->MCR |= (1 << (channel * 3));
-	} else {
-		pwm->timer->MCR &= ~(1 << (channel * 3));
-		*pwm->port &= ~pwm->pins[channel];
-		pwm->vals[channel] = 0xffff;
-	}
+	pwm->vals[channel] = value << 8;
+	pwm->timer->MCR |= (1 << (channel * 3));
 }
 
 static void do_fade(void)
 {
-	uint8_t level = 255;
+	uint8_t level = 0xFF;
 	do {
 		level--;
-		pwm_set(&pwm0, 0, (level << 8));
-		pwm_set(&pwm0, 1, ~(level << 8));
+		pwm_set(&pwm0, 0, level);
+		pwm_set(&pwm0, 1, ~level);
 		delay_ms(15);
 	} while (level);
 }
@@ -195,7 +192,7 @@ void display(uint32_t sentence)
 	*fade_in = sentence & ~onscreen;
 	*fade_out = onscreen & ~sentence;
 	onscreen = sentence;
-	pwm_set(&pwm0, 0, 0);
+	pwm_set(&pwm0, 0, 0xFF);
 	pwm_set(&pwm0, 1, 0);
 	pwm_start();
 	do_fade();
