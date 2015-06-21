@@ -4,6 +4,7 @@
 
 #include "LPC11Uxx.h"
 #include "usart.h"
+#include "spi.h"
 #include "ds1302.h"
 
 #define MAGIC_MARKER 0x42
@@ -183,7 +184,7 @@ static void do_fade(void)
 		level--;
 		pwm_set(&pwm0, 0, level);
 		pwm_set(&pwm0, 1, ~level);
-		delay_ms(15);
+		delay_ms(18);
 	} while (level);
 }
 
@@ -219,19 +220,50 @@ void setup_leds(void)
 	LPC_GPIO->DIR[0] |= (0xFF << 8);
 }
 
+extern uint32_t hsvtorgb(unsigned char h, unsigned char s, unsigned char v);
+
+/* Color like 0x00GGRRBB */
+void send_color(struct spi_dev *spidev, uint32_t color)
+{
+	color |= 0x808080;
+	spi_transfer(spidev, (uint8_t *)&color, NULL, 3);
+}
+
+void reset_strip(struct spi_dev *spidev)
+{
+	spi_transfer(spidev, NULL, NULL, 1);
+}
+
 int main(void) {
+	struct spi_dev *spidev;
 	uint8_t magic;
 
 	SystemInit();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
 
-	setup_leds();
+	//setup_leds();
 	rtc_init();
+	spidev = spi_init(SSP0, FRAMESZ_8BIT);
 	usart_init(USART_BOOTLOADER);
 	init_timer16_0();
 
 	usart_send("Hello", 5);
+
+	unsigned char sat = 255;
+	unsigned char val = 64;
+	unsigned char hue = 0;
+
+	uint8_t i, j = 0;
+	while (1) {
+		for (i = 0; i < 26; i++) {
+			uint32_t color = hsvtorgb(hue + i + j, sat, val);
+			send_color(spidev, color);
+		}
+		reset_strip(spidev);
+		j++;
+		delay_ms(20);
+	}
 
 	/*
 	magic = rtc_peek(0x0);

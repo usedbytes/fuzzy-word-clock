@@ -1,7 +1,7 @@
 # Project Name
 PROJECT = blink
 # Source files
-SOURCES = lpc11uxx/system_LPC11Uxx.c startup.c main.c usart.c ds1302.c spi.c
+SOURCES = lpc11uxx/system_LPC11Uxx.c startup.c main.c usart.c ds1302.c spi.c hsvtorgb.c
 # Linker script
 LINKER_SCRIPT = lpc11u24.dld
 
