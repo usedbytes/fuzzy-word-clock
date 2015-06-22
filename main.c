@@ -229,10 +229,16 @@ void send_color(struct spi_dev *spidev, uint32_t color)
 	spi_transfer(spidev, (uint8_t *)&color, NULL, 3);
 }
 
-void reset_strip(struct spi_dev *spidev)
+void latch_strip(struct spi_dev *spidev)
 {
 	spi_transfer(spidev, NULL, NULL, 1);
 }
+
+#define N_LEDS 26
+#define MIN_DELAY 18
+#define DELAY_DELTA 80
+#define HUE_STEP 2
+#define DECAY 2
 
 int main(void) {
 	struct spi_dev *spidev;
@@ -254,15 +260,35 @@ int main(void) {
 	unsigned char val = 64;
 	unsigned char hue = 0;
 
-	uint8_t i, j = 0;
+	uint8_t i, j = 0, active = 0;
+	int dir = 1;
+	int sin[] = {
+		256, 225, 194, 165, 137, 110, 86, 64, 45, 29, 16, 7, 1, 0,
+		1, 7, 16, 29, 45, 64, 86, 110, 137, 165, 194, 225, 256,
+	};
 	while (1) {
-		for (i = 0; i < 26; i++) {
-			uint32_t color = hsvtorgb(hue + i + j, sat, val);
-			send_color(spidev, color);
+		for (i = 0; i < N_LEDS - 1; i++) {
+			if (dir > 0)
+				active = i;
+			else
+				active = N_LEDS - i - 1;
+
+			for (j = 0; j < N_LEDS; j++) {
+				uint32_t color = 0;
+				int dist = (j - active) * dir;
+				if (dist <= 0) {
+					dist = dist < 0 ? -dist : dist;
+					color = hsvtorgb(hue - (HUE_STEP * dist), sat, val >> (DECAY * dist));
+				}
+				send_color(spidev, color);
+			}
+			latch_strip(spidev);
+			hue += HUE_STEP;
+
+			uint32_t delay = MIN_DELAY + ((DELAY_DELTA * sin[i]) >> 8);
+			delay_ms(delay);
 		}
-		reset_strip(spidev);
-		j++;
-		delay_ms(20);
+		dir *= -1;
 	}
 
 	/*
