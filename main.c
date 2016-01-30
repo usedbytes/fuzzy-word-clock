@@ -7,6 +7,7 @@
 #include "spi.h"
 #include "ds1302.h"
 #include "lpd8806.h"
+#include "segment_display.h"
 
 #define MAGIC_MARKER 0x42
 #define N_MEALS     5
@@ -237,6 +238,7 @@ int main(void) {
 	struct spi_dev *spidev;
 	uint8_t magic;
 	uint32_t fb[3] = { GREEN, BLUE, RED };
+	struct segment_display *disp;
 
 	SystemInit();
 	SystemCoreClockUpdate();
@@ -251,7 +253,7 @@ int main(void) {
 	usart_send("Hello", 5);
 
 	lpd8806_init(spidev, 26);
-	lpd8806_update(spidev, fb, 3);
+	//lpd8806_update(spidev, fb, 3);
 
 	/*
 	magic = rtc_peek(0x0);
@@ -268,14 +270,12 @@ int main(void) {
 	}
 	*/
 
-	while (1) {
-		uint32_t leds = 1;
+	disp = display_init(spidev);
 
-		for (leds = 1; leds < 256; leds <<= 1) {
-			display(LED(BREAKFAST) | LED(ITS_TIME));
-			delay_ms(1000);
-			display(LED(HOME) | LED(DINNER));
-			delay_ms(1000);
+	while (1) {
+		uint32_t count;
+		for (count = 0; count < 256; count++) {
+			display_transition(disp, count, (count + 1) & 0xFF);
 		}
 	}
 
