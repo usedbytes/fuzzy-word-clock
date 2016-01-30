@@ -21,6 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#ifndef __USART_H__
+#define __USART_H__
 
 #include <stddef.h>
 
@@ -53,3 +55,5 @@ void usart_send(char *buffer, size_t len);
  * Note: This will block until there is at least 1 character in the FIFO!
  */
 size_t usart_recv(char *buffer, size_t len);
+
+#endif /* __USART_H__ */

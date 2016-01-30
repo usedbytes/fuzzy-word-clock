@@ -21,6 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#ifndef __SPI_H__
+#define __SPI_H__
 
 #include <stddef.h>
 
@@ -66,3 +68,5 @@ struct spi_dev *spi_init(enum ssp_select devno, enum spi_framesz framesz);
  */
 void spi_transfer(struct spi_dev *dev, void *tx_data, void *rx_data,
 		size_t len);
+
+#endif /* __SPI_H__ */
