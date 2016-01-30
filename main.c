@@ -6,6 +6,7 @@
 #include "usart.h"
 #include "spi.h"
 #include "ds1302.h"
+#include "lpd8806.h"
 
 #define MAGIC_MARKER 0x42
 #define N_MEALS     5
@@ -222,27 +223,20 @@ void setup_leds(void)
 
 extern uint32_t hsvtorgb(unsigned char h, unsigned char s, unsigned char v);
 
-/* Color like 0x00GGRRBB */
-void send_color(struct spi_dev *spidev, uint32_t color)
-{
-	color |= 0x808080;
-	spi_transfer(spidev, (uint8_t *)&color, NULL, 3);
-}
-
-void latch_strip(struct spi_dev *spidev)
-{
-	spi_transfer(spidev, NULL, NULL, 1);
-}
-
 #define N_LEDS 26
 #define MIN_DELAY 18
 #define DELAY_DELTA 80
 #define HUE_STEP 2
-#define DECAY 2
+#define DECAY 1
+
+#define GREEN 0x0F0000
+#define RED 0x000F00
+#define BLUE 0x00000F
 
 int main(void) {
 	struct spi_dev *spidev;
 	uint8_t magic;
+	uint32_t fb[3] = { GREEN, BLUE, RED };
 
 	SystemInit();
 	SystemCoreClockUpdate();
@@ -256,40 +250,8 @@ int main(void) {
 
 	usart_send("Hello", 5);
 
-	unsigned char sat = 255;
-	unsigned char val = 64;
-	unsigned char hue = 0;
-
-	uint8_t i, j = 0, active = 0;
-	int dir = 1;
-	int sin[] = {
-		256, 225, 194, 165, 137, 110, 86, 64, 45, 29, 16, 7, 1, 0,
-		1, 7, 16, 29, 45, 64, 86, 110, 137, 165, 194, 225, 256,
-	};
-	while (1) {
-		for (i = 0; i < N_LEDS - 1; i++) {
-			if (dir > 0)
-				active = i;
-			else
-				active = N_LEDS - i - 1;
-
-			for (j = 0; j < N_LEDS; j++) {
-				uint32_t color = 0;
-				int dist = (j - active) * dir;
-				if (dist <= 0) {
-					dist = dist < 0 ? -dist : dist;
-					color = hsvtorgb(hue - (HUE_STEP * dist), sat, val >> (DECAY * dist));
-				}
-				send_color(spidev, color);
-			}
-			latch_strip(spidev);
-			hue += HUE_STEP;
-
-			uint32_t delay = MIN_DELAY + ((DELAY_DELTA * sin[i]) >> 8);
-			delay_ms(delay);
-		}
-		dir *= -1;
-	}
+	lpd8806_init(spidev, 26);
+	lpd8806_update(spidev, fb, 3);
 
 	/*
 	magic = rtc_peek(0x0);
