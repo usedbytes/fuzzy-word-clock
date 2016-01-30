@@ -1,3 +1,7 @@
+/* Basic LPD8806 Interface
+ *
+ * Copyright Brian Starkey <starkey@gmail.com> 2015
+ */
 
 /* Documentation from Adafruit:
 https://github.com/adafruit/LPD8806/
@@ -54,3 +58,24 @@ a 'latch' anyway.
   depending on the color data loaded on the prior and subsequent frames.
   Tested.  Confirmed.  Fact.
 */
+#ifndef __LPD8806_H__
+#define __LPD8806_H__
+
+#include <stdint.h>
+#include "spi.h"
+
+/* Initialise and zero an LPD8806 strip */
+void lpd8806_init(struct spi_dev *dev, int n_leds);
+
+/* Send reset/latch "zero" bytes - one for every 32 LEDs */
+void lpd8806_reset(struct spi_dev *dev, int n_leds);
+
+/* Update a strip with RGB values
+ *
+ * Each pixel is stored in a 32-bit word, with the colour data in the
+ * lowest 24 bits. Each component should be 7 bits.
+ *  0x00GGRRBB
+ */
+void lpd8806_update(struct spi_dev *dev, uint32_t *colors, int n_leds);
+
+#endif /* __LPD8806_H__ */
