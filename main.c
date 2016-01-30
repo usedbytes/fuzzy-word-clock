@@ -3,11 +3,13 @@
 #include <stdbool.h>
 
 #include "LPC11Uxx.h"
-#include "usart.h"
-#include "spi.h"
+
 #include "ds1302.h"
 #include "lpd8806.h"
 #include "segment_display.h"
+#include "spi.h"
+#include "usart.h"
+#include "util.h"
 
 #define MAGIC_MARKER 0x42
 #define N_MEALS     5
@@ -24,18 +26,7 @@
 #define NEARLY_THRESH 8
 #define PAST_THRESH   8
 
-volatile uint32_t msTicks = 0;
 struct rtc_date date;
-
-void SysTick_Handler(void) {
-	msTicks++;
-}
-
-void delay_ms(uint32_t ms) {
-	uint32_t now = msTicks;
-	while ((msTicks-now) < ms)
-		;
-}
 
 struct pwm_16b {
 	LPC_CTxxBx_Type *timer;
@@ -200,12 +191,6 @@ void display(uint32_t sentence)
 	pwm_start();
 	do_fade();
 	pwm_stop();
-}
-
-void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val)
-{
-	*reg &= ~mask;
-	*reg |= val & mask;
 }
 
 void setup_leds(void)

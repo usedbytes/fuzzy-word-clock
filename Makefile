@@ -4,12 +4,13 @@ PROJECT = blink
 SOURCES = lpc11uxx/system_LPC11Uxx.c \
 		  startup.c \
 		  main.c \
-		  usart.c \
 		  ds1302.c \
-		  spi.c \
 		  hsvtorgb.c \
 		  lpd8806.c \
-		  lpd8806_display.c
+		  lpd8806_display.c \
+		  spi.c \
+		  usart.c \
+		  util.c
 
 # Linker script
 LINKER_SCRIPT = lpc11u24.dld

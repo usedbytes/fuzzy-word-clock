@@ -24,14 +24,13 @@
 #include "lpd8806.h"
 #include "spi.h"
 #include "segment_display.h"
+#include "util.h"
 
 #define N_LEDS 26
 #define N_SEGMENTS 8
 #define FADE_STEP 2
 
 extern uint32_t hsvtorgb(unsigned char h, unsigned char s, unsigned char v);
-
-extern void delay_ms(uint32_t ms);
 
 uint32_t framebuffer[N_LEDS] = { 0 };
 
