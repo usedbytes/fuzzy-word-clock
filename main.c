@@ -6,6 +6,7 @@
 
 #include "ds1302.h"
 #include "lpd8806.h"
+#include "pwm.h"
 #include "segment_display.h"
 #include "spi.h"
 #include "usart.h"
@@ -28,68 +29,10 @@
 
 struct rtc_date date;
 
-struct pwm_16b {
-	LPC_CTxxBx_Type *timer;
-	__IO uint32_t *port;
-	uint32_t pins[3];
-	uint16_t vals[3];
-};
-
-struct pwm_16b pwm0 = {
-	LPC_CT16B0,
-	&LPC_GPIO->PIN[0],
-	{ 0x3 << 9, 0x3 << 11, 0x3 << 13 },
-	{ 0, 0, 0 },
-};
-uint32_t *fade_out = &pwm0.pins[0];
-uint32_t *fade_in = &pwm0.pins[1];
+struct pwm_16b *pwm;
+uint32_t *fade_out;
+uint32_t *fade_in;
 uint32_t onscreen = 0;
-
-void TIMER_16_0_Handler(void) {
-	uint32_t status = LPC_CT16B0->IR;
-	bool overflow = status & (1 << 3);
-	uint32_t state = LPC_GPIO->PIN[0];
-	uint32_t to_clear = 0;
-	uint32_t to_set = 0;
-	int channel;
-
-	/* Turn enabled channels on if there was an overflow */
-	if (overflow) {
-		for (channel = 0; channel < 3; channel++) {
-			if (pwm0.vals[channel])
-				to_set |= pwm0.pins[channel];
-		}
-	}
-
-	/* Selectively turn them off if there was a match */
-	for (channel = 0; channel < 3; channel++) {
-		if (status & (1 << channel)) {
-			to_clear |= pwm0.pins[channel];
-			pwm0.timer->MR[channel] = pwm0.vals[channel];
-		}
-	}
-
-	to_clear = ~to_clear;
-	state |= to_set;
-	state &= to_clear;
-	LPC_GPIO->PIN[0] = state;
-
-	LPC_CT16B0->IR = status;
-	return;
-}
-
-void init_timer16_0()
-{
-	/* Turn on the clock */
-	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 7);
-	LPC_CT16B0->PR = 4;
-	/* Use MR3 as overflow interupt */
-	LPC_CT16B0->MR3 = 0x0;
-	LPC_CT16B0->MCR = (1 << 9);
-	LPC_CT16B0->TCR = 0x1;
-	NVIC_SetPriority(TIMER_16_0_IRQn, 3);
-	NVIC_EnableIRQ(TIMER_16_0_IRQn);
-}
 
 uint8_t do_write_cmd(void)
 {
@@ -151,32 +94,13 @@ void program_mode(void)
 	}
 }
 
-static void pwm_start(void)
-{
-	pwm0.timer->MR[0] = pwm0.vals[0];
-	pwm0.timer->MR[1] = pwm0.vals[1];
-	pwm0.timer->MR[2] = pwm0.vals[2];
-	LPC_CT16B0->TCR = 0x1;
-}
-
-static void pwm_stop(void)
-{
-	LPC_CT16B0->TCR = 0x0;
-}
-
-void pwm_set(struct pwm_16b *pwm, uint32_t channel, uint8_t value)
-{
-	pwm->vals[channel] = value << 8;
-	pwm->timer->MCR |= (1 << (channel * 3));
-}
-
 static void do_fade(void)
 {
 	uint8_t level = 0xFF;
 	do {
 		level--;
-		pwm_set(&pwm0, 0, level);
-		pwm_set(&pwm0, 1, ~level);
+		pwm_set(pwm, 0, level);
+		pwm_set(pwm, 1, ~level);
 		delay_ms(18);
 	} while (level);
 }
@@ -186,11 +110,11 @@ void display(uint32_t sentence)
 	*fade_in = sentence & ~onscreen;
 	*fade_out = onscreen & ~sentence;
 	onscreen = sentence;
-	pwm_set(&pwm0, 0, 0xFF);
-	pwm_set(&pwm0, 1, 0);
-	pwm_start();
+	pwm_set(pwm, 0, 0xFF);
+	pwm_set(pwm, 1, 0);
+	pwm_start(pwm);
 	do_fade();
-	pwm_stop();
+	pwm_stop(pwm);
 }
 
 void setup_leds(void)
@@ -233,7 +157,10 @@ int main(void) {
 	rtc_init();
 	spidev = spi_init(SSP0, FRAMESZ_8BIT);
 	usart_init(USART_BOOTLOADER);
-	init_timer16_0();
+	pwm = pwm_init(0, &LPC_GPIO->PIN[0],
+	               (uint32_t[]){ 0x3 << 9, 0x3 << 11, 0x3 << 13 });
+	fade_out = &pwm->pins[0];
+	fade_in = &pwm->pins[1];
 
 	usart_send("Hello", 5);
 
