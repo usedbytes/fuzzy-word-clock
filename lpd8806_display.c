@@ -63,7 +63,8 @@ void lpd8806_set_segment(struct segment_display *disp,
 {
 	int nleds = segment->len;
 	while (nleds--) {
-		framebuffer[segment->start + nleds] = hsvtorgb(0, 0, value);
+		framebuffer[segment->start + nleds] =
+				hsvtorgb(value, 0xff, value);
 	}
 }
 
