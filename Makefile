@@ -16,6 +16,11 @@ SOURCES = lpc11uxx/system_LPC11Uxx.c \
 # Linker script
 LINKER_SCRIPT = lpc11u24.dld
 
+
+#########################################################################
+
+ISP_DIR ?= "/media/removable/CRP DISABLD"
+
 #########################################################################
 
 OBJDIR = obj
@@ -80,7 +85,7 @@ stats: $(PROJECT).elf
 
 .PHONY: isp
 isp: $(PROJECT)_checksum.bin
-	dd if=$< conv=nocreat,notrunc of=/media/removable/CRP\ DISABLD/firmware.bin
+	dd if=$< conv=nocreat,notrunc of='$(ISP_DIR)/firmware.bin'
 
 .PHONY: clean
 clean:
