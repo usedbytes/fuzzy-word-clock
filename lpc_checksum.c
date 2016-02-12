@@ -72,12 +72,13 @@ int main(int argc, char *argv[])
 	printf("Checksum: 0x%08x\n", checksum);
 
 	if (out) {
+		char c;
 		fwrite(vector, 4, 7, out);
 		fwrite(&checksum, 4, 1, out);
 		/* Throw away the old checksum word */
 		fread(&checksum, 4, 1, in);
-		while (fread(&checksum, 4, 1, in) == 1)
-			fwrite(&checksum, 4, 1, out);
+		while (fread(&c, 1, 1, in) == 1)
+			fwrite(&c, 1, 1, out);
 	} else {
 		fseek(in, 0x1c, SEEK_SET);
 		fwrite(&checksum, 4, 1, in);
