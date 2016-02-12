@@ -65,12 +65,9 @@ void dump_mem(const char *addr, size_t len)
 	len += ((uint32_t)addr) & 0xf;
 
 
-	usart_send("Dump around ", 12);
 	u32_to_str((uint32_t)addr, buf);
-	usart_send(buf, 8);
-	usart_send("\r\n", 2);
-
-	align = 10 + (align * 3);
+	usart_send(buf, 9);
+	align = 1 + (align * 3);
 	while (align--)
 		usart_send(" ", 1);
 	usart_send("v", 1);
