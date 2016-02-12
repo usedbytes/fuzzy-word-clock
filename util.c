@@ -89,14 +89,14 @@ void dump_mem(const char *addr, size_t len)
 
 		buf[0] = ' ';
 		if ((c & 0xf) <= 9)
-			buf[1] = (c & 0xf) + '0';
-		else
-			buf[1] = (c & 0xf) + ('a' - 10);
-		c >>= 4;
-		if ((c & 0xf) <= 9)
 			buf[2] = (c & 0xf) + '0';
 		else
 			buf[2] = (c & 0xf) + ('a' - 10);
+		c >>= 4;
+		if ((c & 0xf) <= 9)
+			buf[1] = (c & 0xf) + '0';
+		else
+			buf[1] = (c & 0xf) + ('a' - 10);
 		usart_send(buf, 3);
 
 		if (!len || !((uint32_t)addr & 0xf))
