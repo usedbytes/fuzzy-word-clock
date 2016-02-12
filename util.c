@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 
+#include "usart.h"
 #include "util.h"
 
 volatile uint32_t msTicks = 0;
@@ -41,4 +42,64 @@ void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val)
 {
 	*reg &= ~mask;
 	*reg |= val & mask;
+}
+
+void u32_to_str(uint32_t val, char *buf)
+{
+	int i = 8;
+	while (i--) {
+		if ((val & 0xf) <= 9)
+			buf[i] = (val & 0xf) + '0';
+		else
+			buf[i] = (val & 0xf) + ('a' - 10);
+		val >>= 4;
+	}
+}
+
+void dump_mem(const char *addr, size_t len)
+{
+	char c;
+	char align = ((uint32_t)addr) & 0xf;
+	char buf[] = "deadbeef:";
+
+	len += ((uint32_t)addr) & 0xf;
+
+
+	usart_send("Dump around ", 12);
+	u32_to_str((uint32_t)addr, buf);
+	usart_send(buf, 8);
+	usart_send("\r\n", 2);
+
+	align = 10 + (align * 3);
+	while (align--)
+		usart_send(" ", 1);
+	usart_send("v", 1);
+	usart_send("\r\n", 2);
+
+	addr = (const char *)((uint32_t)addr & ~0xf);
+
+	while (len--) {
+		if (!((uint32_t)addr & 0xf)) {
+			u32_to_str((uint32_t)addr, buf);
+			usart_send(buf, 9);
+		}
+
+		c = *addr;
+		addr++;
+
+		buf[0] = ' ';
+		if ((c & 0xf) <= 9)
+			buf[1] = (c & 0xf) + '0';
+		else
+			buf[1] = (c & 0xf) + ('a' - 10);
+		c >>= 4;
+		if ((c & 0xf) <= 9)
+			buf[2] = (c & 0xf) + '0';
+		else
+			buf[2] = (c & 0xf) + ('a' - 10);
+		usart_send(buf, 3);
+
+		if (!len || !((uint32_t)addr & 0xf))
+			usart_send("\r\n", 2);
+	}
 }

@@ -25,6 +25,7 @@
 #define __UTIL_H__
 
 #include <stdint.h>
+#include <stdlib.h>
 
 /* SysTick counter */
 extern volatile uint32_t msTicks;
@@ -32,5 +33,9 @@ extern volatile uint32_t msTicks;
 void delay_ms(uint32_t ms);
 
 void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val);
+
+void u32_to_str(uint32_t val, char *buf);
+
+void dump_mem(const char *addr, size_t len);
 
 #endif /* __UTIL_H__ */
