@@ -18,11 +18,15 @@ SECTIONS {
 		*(.vectors)
 	} >flash
 
+	. = ALIGN(4);
+
 	.text :
 	{
 		*(.text*)
 		*(.rodata*)
 	} >flash
+
+	. = ALIGN(4);
 
 	.data :
 	{
