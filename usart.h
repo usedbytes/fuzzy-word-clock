@@ -45,7 +45,10 @@ void usart_init(enum usart_select pins);
  * transmission first (and waiting for each 16 byte chunk to be transmitted
  * if len > 16)
  */
-void usart_send(char *buffer, size_t len);
+void usart_send(const char *buffer, size_t len);
+
+/* Send a zero-terminated string */
+void usart_print(const char *str);
 
 /* Receive data from the USART
  *

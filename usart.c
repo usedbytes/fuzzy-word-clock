@@ -98,7 +98,7 @@ void usart_init(enum usart_select pins)
 	LPC_USART->IER |= 0x1;
 }
 
-void usart_send(char *buffer, size_t len)
+void usart_send(const char *buffer, size_t len)
 {
 	do {
 		size_t i;
@@ -112,6 +112,14 @@ void usart_send(char *buffer, size_t len)
 		len -= i;
 		buffer = buffer + i;
 	} while (len > 0);
+}
+
+void usart_print(const char *str)
+{
+	int i = 0;
+	while (str[i++]);
+
+	usart_send(str, i);
 }
 
 size_t usart_recv(char *buffer, size_t len)
