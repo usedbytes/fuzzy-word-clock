@@ -5,6 +5,7 @@
 #include "LPC11Uxx.h"
 
 #include "usart.h"
+#include "usb_cdc.h"
 #include "util.h"
 
 int main(void) {
@@ -16,6 +17,7 @@ int main(void) {
 
 	usart_send("\r\n\r\nReset!\r\n", 12);
 
+	usb_init();
 
 	while(1);
 

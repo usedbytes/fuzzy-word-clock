@@ -44,6 +44,7 @@ void TIMER_32_0_Handler(void) WEAK_ALIAS(Dummy_Handler);
 void TIMER_32_1_Handler(void) WEAK_ALIAS(Dummy_Handler);
 void SSP0_Handler(void) WEAK_ALIAS(Dummy_Handler);
 void UART_Handler(void) WEAK_ALIAS(Dummy_Handler);
+void USB_Handler(void) WEAK_ALIAS(Dummy_Handler);
 void ADC_Handler(void) WEAK_ALIAS(Dummy_Handler);
 void WDT_Handler(void) WEAK_ALIAS(Dummy_Handler);
 void BOD_Handler(void) WEAK_ALIAS(Dummy_Handler);
@@ -96,7 +97,7 @@ void *vector_table[] __attribute__ ((section(".vectors"))) = {
     TIMER_32_1_Handler,
     SSP0_Handler,
     UART_Handler,
-    Dummy_Handler,  /* Reserved */
+    USB_Handler,
     Dummy_Handler,  /* Reserved */
     ADC_Handler,
     WDT_Handler,

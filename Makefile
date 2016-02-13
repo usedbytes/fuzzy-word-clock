@@ -11,6 +11,7 @@ SOURCES = lpc11uxx/system_LPC11Uxx.c \
 		  pwm.c \
 		  spi.c \
 		  usart.c \
+		  usb_cdc.c \
 		  util.c
 
 # Linker script
