@@ -27,6 +27,10 @@
 
 #if 0
 /* TODO: Just storing this code away */
+struct pwm_16b *pwm;
+uint32_t *fade_out;
+uint32_t *fade_in;
+uint32_t onscreen = 0;
 static void do_fade(void)
 {
 	uint8_t level = 0xFF;
