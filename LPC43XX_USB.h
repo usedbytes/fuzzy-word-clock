@@ -67,11 +67,12 @@ typedef struct _ROM {
 	uint32_t p_usbd;
 }  ROM_FUNCTION_TABLE;
 
-#define ROM_FUNCTION_TABLE_PTR_ADDR  (0x10400104)
+#define ROM_FUNCTION_TABLE_PTR_ADDR  (0x1fff1fe0)
 #define MAX_USB_CORE  2
 
-#define ROM_USBD_PTR  (((ROM_FUNCTION_TABLE *) \
-                        (ROM_FUNCTION_TABLE_PTR_ADDR))->p_usbd)
+#define ROM_TABLE_PTR ((ROM_FUNCTION_TABLE *)ROM_FUNCTION_TABLE_PTR_ADDR)
+
+#define ROM_USBD_PTR ((ROM_TABLE_PTR)->p_usbd)
 
 /* ---------- ERROR_H ---------- */
 /* Error codes returned by Boot ROM drivers/library functions */
@@ -1037,9 +1038,6 @@ uint32_t UsbdCdc_RecvData(uint8_t* buffer, uint32_t len);
 #define _SBF(f,v) (((uint32_t)(v)) << (f))
 #endif /*_BIT*/
 
-/* USB Module Register Structure */
-typedef LPC_USBHS_T USB_OTG_REGS_T;
-
 /* dTD Transfer Description */
 typedef volatile struct
 {
@@ -1158,7 +1156,7 @@ typedef struct USBD_API
   uint32_t version; /* Version identifier of USB ROM stack */
 } USBD_API_T;
 
-#define USBD_API (((USBD_API_T*)(ROM_USBD_PTR)))
+#define USBD_API (*(USBD_API_T **)(ROM_USBD_PTR))
 
 /* Abbreviations for common functions to simplify porting to other stacks */
 #define USBD_RegisterClassHandler  USBD_API->core->RegisterClassHandler
