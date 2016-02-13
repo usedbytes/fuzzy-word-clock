@@ -438,6 +438,46 @@ PRE_PACK struct POST_PACK _USB_OTHER_SPEED_CONFIGURATION
 /* USB Other Speed Configuration */
 typedef struct _USB_OTHER_SPEED_CONFIGURATION USB_OTHER_SPEED_CONFIGURATION;
 
+/* CDC Class-specific descriptors */
+PRE_PACK struct POST_PACK _USB_CDC_HEADER_FUNCTIONAL_DESCRIPTOR
+{
+  uint8_t  bFunctionLength; /* Size of descriptor */
+  uint8_t  bDescriptorType; /* CS_INTERFACE descriptor type (0x24) */
+  uint8_t  bDescriptorSubType; /* Header SubType (0) */
+  uint16_t bcdCDC; /* CDC Specification version number */
+};
+typedef struct _USB_CDC_HEADER_FUNCTIONAL_DESCRIPTOR USB_CDC_HEADER_FUNC_DESC;
+
+PRE_PACK struct POST_PACK _USB_CDC_CALL_MGMT_FUNCTIONAL_DESCRIPTOR
+{
+  uint8_t  bFunctionLength; /* Size of descriptor */
+  uint8_t  bDescriptorType; /* CS_INTERFACE descriptor type (0x24) */
+  uint8_t  bDescriptorSubType; /* Call Management SubType (0x01) */
+  uint8_t  bmCapabilities;
+  uint8_t  bDataInterface;
+};
+typedef struct _USB_CDC_CALL_MGMT_FUNCTIONAL_DESCRIPTOR USB_CDC_CM_FUNC_DESC;
+
+PRE_PACK struct POST_PACK _USB_CDC_ACM_FUNCTIONAL_DESCRIPTOR
+{
+  uint8_t  bFunctionLength; /* Size of descriptor */
+  uint8_t  bDescriptorType; /* CS_INTERFACE descriptor type (0x24) */
+  uint8_t  bDescriptorSubType; /* ACM SubType (0x02) */
+  uint8_t  bmCapabilities;
+};
+typedef struct _USB_CDC_ACM_FUNCTIONAL_DESCRIPTOR USB_CDC_ACM_FUNC_DESC;
+
+PRE_PACK struct POST_PACK _USB_CDC_UNION_FUNCTIONAL_DESCRIPTOR
+{
+  uint8_t  bFunctionLength; /* Size of descriptor */
+  uint8_t  bDescriptorType; /* CS_INTERFACE descriptor type (0x24) */
+  uint8_t  bDescriptorSubType; /* Union SubType (0x06) */
+  uint8_t  bMasterInterface;
+  uint8_t  bSlaveInterface0;
+  /* [] */
+};
+typedef struct _USB_CDC_UNION_FUNCTIONAL_DESCRIPTOR USB_CDC_UNION_FUNC_DESC;
+
 /* USB device stack/module handle */
 typedef void* USBD_HANDLE_T;
 
