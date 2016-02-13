@@ -58,7 +58,7 @@ REMOVE = rm -f
 #########################################################################
 
 .PHONY: all checksum
-all: $(PROJECT).hex $(PROJECT).bin
+all: $(PROJECT).hex $(PROJECT).bin $(PROJECT).lss
 
 $(PROJECT).bin: $(PROJECT).elf
 	$(OBJCOPY) -R .stack -R .bss -O binary -S $(PROJECT).elf $(PROJECT).bin
