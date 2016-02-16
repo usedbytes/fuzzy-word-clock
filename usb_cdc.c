@@ -27,6 +27,8 @@
 #define USB_CDC_EP_BULK_OUT  USB_ENDPOINT_OUT(USB_CDC_EP_DIF)
 #define USB_CDC_EP_INT_IN    USB_ENDPOINT_IN(USB_CDC_EP_CIF)
 
+#define CDC_NO_CALL_MGMT_FUNC_DESC
+
 USBD_HANDLE_T mhUsb, mhCdc;
 
 const USB_DEVICE_DESCRIPTOR device_descriptor = {
@@ -72,7 +74,21 @@ const uint8_t string_descriptors[] = {
 struct __attribute__((packed)) cdc_cif_descriptor {
 	USB_INTERFACE_DESCRIPTOR intf;
 	USB_CDC_HEADER_FUNC_DESC func_hdr;
+#ifndef CDC_NO_CALL_MGMT_FUNC_DESC
+	/*
+	 * Seems like the ROM driver can't reliably handle a
+	 * config descriptor larger than 64 bytes (1 packet).
+	 * The Call Management Functional Descriptor seems like
+	 * the least useful one, so we can opt to omit it to
+	 * reduce the descriptor size
+	 *
+	 * More info: https://www.lpcware.com/content/forum/usbd-get-device-configuration-descriptor-truncated-packets
+	 *
+	 * TODO: It should be possible to override the GetDescriptor
+	 * Config request, and possibly work-around this limitation.
+	 */
 	USB_CDC_CM_FUNC_DESC func_cm;
+#endif
 	USB_CDC_ACM_FUNC_DESC func_acm;
 	USB_CDC_UNION_FUNC_DESC func_union;
 	USB_ENDPOINT_DESCRIPTOR ep0;
@@ -120,6 +136,7 @@ const struct cdc_descriptor_array desc_array = {
 			.bDescriptorSubType = CDC_HEADER,
 			.bcdCDC = 0x0110,
 		},
+#ifndef CDC_NO_CALL_MGMT_FUNC_DESC
 		.func_cm = {
 			.bFunctionLength = sizeof(USB_CDC_CM_FUNC_DESC),
 			.bDescriptorType = CDC_CS_INTERFACE,
@@ -127,6 +144,7 @@ const struct cdc_descriptor_array desc_array = {
 			.bmCapabilities = 0x01,
 			.bDataInterface = 0x01,
 		},
+#endif
 		.func_acm = {
 			.bFunctionLength = sizeof(USB_CDC_ACM_FUNC_DESC),
 			.bDescriptorType = CDC_CS_INTERFACE,
