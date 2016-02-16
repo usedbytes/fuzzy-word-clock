@@ -101,3 +101,10 @@ void dump_mem(const void *addr, size_t len)
 			usart_send("\r\n", 2);
 	}
 }
+
+void print_u32(uint32_t val)
+{
+	static char buf[] = "deadbeef\r\n";
+	u32_to_str(val, buf);
+	usart_print(buf);
+}

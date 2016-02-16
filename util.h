@@ -35,6 +35,7 @@ void delay_ms(uint32_t ms);
 void set_with_mask(volatile uint32_t *reg, uint32_t mask, uint32_t val);
 
 void u32_to_str(uint32_t val, char *buf);
+void print_u32(uint32_t val);
 
 void dump_mem(const void *addr, size_t len);
 
