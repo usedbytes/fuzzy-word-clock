@@ -1,10 +1,11 @@
+#include <string.h>
+#include <stdbool.h>
+
 #include "LPC11Uxx.h"
 
 #include "usart.h"
 #include "util.h"
 #include "LPC43XX_USB.h"
-
-#include <string.h>
 
 #define ALIGN(__x, __to) (((__x) + (__to - 1)) & ~(__to - 1))
 
@@ -29,7 +30,19 @@
 
 #define CDC_NO_CALL_MGMT_FUNC_DESC
 
-USBD_HANDLE_T mhUsb, mhCdc;
+struct usb_ctx {
+	USBD_HANDLE_T core_hnd;
+	USBD_HANDLE_T cdc_hnd;
+	volatile bool dtr;
+
+	volatile bool tx_busy;
+
+	volatile uint8_t rx_buf[128];
+	volatile uint8_t head, tail;
+	volatile bool overrun;
+};
+
+struct usb_ctx usb_ctx;
 
 const USB_DEVICE_DESCRIPTOR device_descriptor = {
 	.bLength = USB_DEVICE_DESC_SIZE,
@@ -206,29 +219,14 @@ const USB_CORE_DESCS_T core_desc = {
 	.high_speed_desc = (const uint8_t *)&desc_array.cfg,
 };
 
-ErrorCode_t SOF_Event(USBD_HANDLE_T hUsb)
-{
-	return LPC_OK;
-}
-
-ErrorCode_t CIC_GetRequest(USBD_HANDLE_T hHid, USBD_SETUP_PACKET* pSetup,
-		   uint8_t** pBuffer, uint16_t* length)
-{
-
-	return LPC_OK;
-}
-
-ErrorCode_t CIC_SetRequest(USBD_HANDLE_T hCdc, USBD_SETUP_PACKET* pSetup,
-               uint8_t** pBuffer, uint16_t length)
-{
-
-	return LPC_OK;
-}
-
 ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 {
-	usart_print("Bulk in\r\n");
-	dump_mem(data, 32);
+	switch (event) {
+		case USB_EVT_IN:
+			usb_ctx.tx_busy = false;
+			break;
+	}
+
 	return LPC_OK;
 }
 
@@ -241,61 +239,25 @@ ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
 	return LPC_OK;
 }
 
-ErrorCode_t SendEncpsCmd(USBD_HANDLE_T hCDC, uint8_t* buffer, uint16_t len)
-{
-
-	return LPC_OK;
-}
-
-ErrorCode_t GetEncpsResp(USBD_HANDLE_T hCDC, uint8_t** buffer,
-             uint16_t* len)
-{
-
-	return LPC_OK;
-}
-
-ErrorCode_t SetCommFeature(USBD_HANDLE_T hCDC, uint16_t feature,
-             uint8_t* buffer, uint16_t len)
-{
-
-	return LPC_OK;
-}
-
-ErrorCode_t GetCommFeature(USBD_HANDLE_T hCDC, uint16_t feature,
-             uint8_t** pBuffer, uint16_t* len)
-{
-
-	return LPC_OK;
-}
-
-ErrorCode_t ClrCommFeature(USBD_HANDLE_T hCDC, uint16_t feature)
-{
-
-	return LPC_OK;
-}
-
 ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 {
+	usb_ctx.dtr = (state & 0x1);
 
 	return LPC_OK;
 }
 
 ErrorCode_t SendBreak(USBD_HANDLE_T hCDC, uint16_t mstime)
 {
+	usart_print("SendBreak:\r\n");
+	dump_mem(&mstime, sizeof(mstime));
 
 	return LPC_OK;
 }
 
-ErrorCode_t SetLineCode(USBD_HANDLE_T hCDC, CDC_LINE_CODING* line_coding)
-{
-	USBD_API->hw->EnableEvent(mhUsb, 0, USB_EVT_SOF, 1);
-
-	return LPC_OK;
-}
 
 void USB_Handler(void)
 {
-	USBD_API->hw->ISR(mhUsb);
+	USBD_API->hw->ISR(usb_ctx.core_hnd);
 }
 
 void usb_periph_init()
@@ -345,7 +307,7 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	}
 	*mem_size = req_size;
 
-	ret = USBD_Init(&mhUsb, &core_desc, &usb_param);
+	ret = USBD_Init(&usb_ctx.core_hnd, &core_desc, &usb_param);
 	if (ret)
 		return ret;
 
@@ -392,8 +354,8 @@ int usb_init()
 	}
 
 	/* Init CDC params */
-	cdc_param.SetLineCode = SetLineCode;
 	cdc_param.SendBreak = SendBreak;
+	cdc_param.SetCtrlLineState = SetCtrlLineState;
 	cdc_param.cif_intf_desc = (uint8_t *)&desc_array.cif;
 	cdc_param.dif_intf_desc = (uint8_t *)&desc_array.dif;
 	cdc_param.mem_base = USB_MEM_BASE + mem_size;
@@ -406,7 +368,7 @@ int usb_init()
 	}
 
 	/* Initialise CDC */
-	ret = USBD_CDC_Init(mhUsb, &cdc_param, &mhCdc);
+	ret = USBD_CDC_Init(usb_ctx.core_hnd, &cdc_param, &usb_ctx.cdc_hnd);
 	if (ret != LPC_OK) {
 		usart_print("CDC Init failed: ");
 		u32_to_str(ret, buf);
@@ -415,7 +377,7 @@ int usb_init()
 	}
 
 	ep = USB_EP_INDEX_IN(USB_CDC_EP_DIF);
-	ret = USBD_RegisterEpHandler(mhUsb, ep, CDC_BulkIN_Hdlr, &mhCdc);
+	ret = USBD_RegisterEpHandler(usb_ctx.core_hnd, ep, CDC_BulkIN_Hdlr, &usb_ctx);
 	if (ret != LPC_OK) {
 		usart_print("RegisterEpHandler (in) failed: ");
 		u32_to_str(ret, buf);
@@ -424,7 +386,7 @@ int usb_init()
 	}
 
 	ep = USB_EP_INDEX_OUT(USB_CDC_EP_DIF);
-	ret = USBD_RegisterEpHandler(mhUsb, ep, CDC_BulkOUT_Hdlr, &mhCdc);
+	ret = USBD_RegisterEpHandler(usb_ctx.core_hnd, ep, CDC_BulkOUT_Hdlr, &usb_ctx);
 	if (ret != LPC_OK) {
 		usart_print("RegisterEpHandler (out) failed: ");
 		u32_to_str(ret, buf);
@@ -437,7 +399,7 @@ int usb_init()
 	NVIC_EnableIRQ(USB_IRQn);
 
 	/* Connect to the bus */
-        USBD_Connect(mhUsb, 1);
+        USBD_Connect(usb_ctx.core_hnd, 1);
 
 	/*
 	 * FIXME: Not sure if we need to keep the cdc_param around.
@@ -451,4 +413,31 @@ int usb_init()
 error:
 	usb_periph_exit();
 	return -1;
+}
+
+#define USB_PKT_SEND_TIMEOUT_MS 100
+void usb_usart_send(const char *buf, size_t len)
+{
+	uint32_t sent;
+
+	while (len) {
+		if (!usb_ctx.dtr)
+			return;
+
+		usb_ctx.tx_busy = true;
+		sent = len > USB_MAX_PACKET0 ? USB_MAX_PACKET0 : len;
+		sent = USBD_WriteEP(usb_ctx.core_hnd, USB_CDC_EP_BULK_IN, buf,
+				    sent);
+		if (sent) {
+			len -= sent;
+			buf += sent;
+		} else {
+			usb_ctx.tx_busy = false;
+		}
+	}
+}
+
+bool usb_usart_dtr()
+{
+	return usb_ctx.dtr;
 }
