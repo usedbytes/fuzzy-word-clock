@@ -1,2 +1,2 @@
 
-void usb_init(void);
+int usb_init(void);

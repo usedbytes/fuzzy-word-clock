@@ -17,12 +17,15 @@
 
 #define USB_MEM_BASE 0x20004000
 #define USB_MEM_SIZE 0x800
+#define USB_NUM_ENDPOINTS 3
 
 #define USB_CDC_CIF_NUM   0
 #define USB_CDC_DIF_NUM   1
-#define USB_CDC_EP_BULK_IN   USB_ENDPOINT_IN(2)
-#define USB_CDC_EP_BULK_OUT  USB_ENDPOINT_OUT(2)
-#define USB_CDC_EP_INT_IN    USB_ENDPOINT_IN(1)
+#define USB_CDC_EP_DIF 2
+#define USB_CDC_EP_CIF 1
+#define USB_CDC_EP_BULK_IN   USB_ENDPOINT_IN(USB_CDC_EP_DIF)
+#define USB_CDC_EP_BULK_OUT  USB_ENDPOINT_OUT(USB_CDC_EP_DIF)
+#define USB_CDC_EP_INT_IN    USB_ENDPOINT_IN(USB_CDC_EP_CIF)
 
 USBD_HANDLE_T mhUsb, mhCdc;
 
@@ -134,13 +137,13 @@ const struct cdc_descriptor_array desc_array = {
 			.bFunctionLength = sizeof(USB_CDC_UNION_FUNC_DESC),
 			.bDescriptorType = CDC_CS_INTERFACE,
 			.bDescriptorSubType = CDC_UNION,
-			.bMasterInterface = 0,
-			.bSlaveInterface0 = 1,
+			.bMasterInterface = USB_CDC_CIF_NUM,
+			.bSlaveInterface0 = USB_CDC_DIF_NUM,
 		},
 		.ep0 = {
 			.bLength = USB_ENDPOINT_DESC_SIZE,
 			.bDescriptorType = USB_ENDPOINT_DESCRIPTOR_TYPE,
-			.bEndpointAddress = USB_ENDPOINT_IN(1),
+			.bEndpointAddress = USB_CDC_EP_INT_IN,
 			.bmAttributes = USB_ENDPOINT_TYPE_INTERRUPT,
 			.wMaxPacketSize = 0x0010,
 			.bInterval = 0x02,
@@ -161,7 +164,7 @@ const struct cdc_descriptor_array desc_array = {
 		.ep_out = {
 			.bLength = USB_ENDPOINT_DESC_SIZE,
 			.bDescriptorType = USB_ENDPOINT_DESCRIPTOR_TYPE,
-			.bEndpointAddress = USB_ENDPOINT_OUT(2),
+			.bEndpointAddress = USB_CDC_EP_BULK_OUT,
 			.bmAttributes = USB_ENDPOINT_TYPE_BULK,
 			.wMaxPacketSize = USB_HS_MAX_BULK_PACKET,
 			.bInterval = 0,
@@ -169,7 +172,7 @@ const struct cdc_descriptor_array desc_array = {
 		.ep_in = {
 			.bLength = USB_ENDPOINT_DESC_SIZE,
 			.bDescriptorType = USB_ENDPOINT_DESCRIPTOR_TYPE,
-			.bEndpointAddress = USB_ENDPOINT_IN(2),
+			.bEndpointAddress = USB_CDC_EP_BULK_IN,
 			.bmAttributes = USB_ENDPOINT_TYPE_BULK,
 			.wMaxPacketSize = USB_HS_MAX_BULK_PACKET,
 			.bInterval = 0,
@@ -179,10 +182,10 @@ const struct cdc_descriptor_array desc_array = {
 };
 
 const USB_CORE_DESCS_T core_desc = {
-	.device_desc = (uint8_t *)&device_descriptor,
-	.string_desc = (uint8_t *)&string_descriptors[0],
-	.full_speed_desc = (uint8_t *)&desc_array.cfg,
-	.high_speed_desc = (uint8_t *)&desc_array.cfg,
+	.device_desc = (const uint8_t *)&device_descriptor,
+	.string_desc = (const uint8_t *)&string_descriptors[0],
+	.full_speed_desc = (const uint8_t *)&desc_array.cfg,
+	.high_speed_desc = (const uint8_t *)&desc_array.cfg,
 };
 
 ErrorCode_t SOF_Event(USBD_HANDLE_T hUsb)
@@ -294,14 +297,62 @@ void usb_periph_init()
 	LPC_IOCON->PIO0_6 |= (0x01 << 0);
 }
 
-void usb_init()
+void usb_periph_exit()
 {
-	USBD_API_T *rom_api = USBD_API;
+	/* Just disable the USB clocks */
+	LPC_SYSCON->SYSAHBCLKCTRL &= ~((0x1 << 14) | (0x1 << 27));
+}
+
+ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
+{
 	USBD_API_INIT_PARAM_T usb_param = { 0 };
+	ErrorCode_t ret;
+	uint32_t req_size;
+
+	usb_param.usb_reg_base = LPC_USB_BASE;
+	usb_param.mem_base = mem_base;
+	usb_param.max_num_ep = USB_NUM_ENDPOINTS;
+
+	/*
+	 * The in-ROM MemSize calculation is wrong/limited:
+	 * https://www.lpcware.com/content/forum/hw-init-and-hw-getmemsize-return-seemingly-incorrect-values
+	 */
+	req_size = USBD_GetMemSize(&usb_param);
+	req_size += usb_param.max_num_ep * 2 * ALIGN(USB_MAX_PACKET0, 64);
+	usb_param.mem_size = req_size;
+
+	if (req_size > *mem_size) {
+		usart_print("Not enough space for core API\r\n");
+		return ERR_FAILED;
+	}
+	*mem_size = req_size;
+
+	ret = USBD_Init(&mhUsb, &core_desc, &usb_param);
+	if (ret)
+		return ret;
+
+	if (usb_param.mem_size) {
+		usart_print("Unexpected mem_size. usb_param:\r\n");
+		dump_mem(&usb_param, sizeof(usb_param));
+		return ERR_FAILED;
+	}
+
+	/*
+	 * FIXME: Not sure if we need to keep the usb_param around.
+	 * It seems like no, but this should hopefully cause a crash if
+	 * that turns out not to be the case
+	 */
+	memset(&usb_param, 0, sizeof(usb_param));
+
+	return LPC_OK;
+}
+
+int usb_init()
+{
 	USBD_CDC_INIT_PARAM_T cdc_param = { 0 };
-	ErrorCode_t ret = LPC_OK;
-	uint32_t ep_indx;
-	uint32_t mem_size;
+	ErrorCode_t ret;
+	uint32_t mem_size = USB_MEM_SIZE;
+	uint32_t ep;
 	char buf[11];
 
 	buf[8] = '\r';
@@ -309,31 +360,18 @@ void usb_init()
 	buf[10] = '\0';
 
 	usart_print("Got USB ROM API version: ");
-	u32_to_str(rom_api->version, buf);
+	u32_to_str(USBD_API->version, buf);
 	usart_print(buf);
 
 	usb_periph_init();
 
-	/* Set up USB core */
-	usb_param.usb_reg_base = LPC_USB_BASE;
-	usb_param.mem_base = USB_MEM_BASE;
-	usb_param.max_num_ep = 3;
-	/*
-	 * The in-ROM MemSize calculation is wrong/limited:
-	 * https://www.lpcware.com/content/forum/hw-init-and-hw-getmemsize-return-seemingly-incorrect-values
-	 */
-	mem_size = rom_api->hw->GetMemSize(&usb_param);
-	mem_size += usb_param.max_num_ep * 2 * ALIGN(USB_MAX_PACKET0, 64);
-	usb_param.mem_size = mem_size;
-
-	usart_print("hw->Init...\r\n");
-	ret = USBD_Init(&mhUsb, &core_desc, &usb_param);
-	usart_print("ret: ");
-	u32_to_str(ret, buf);
-	usart_print(buf);
-
-	/* Adjust mem_base as-per above forum post */
-	usb_param.mem_base = USB_MEM_BASE + (mem_size - usb_param.mem_size);
+	ret = usb_core_init(USB_MEM_BASE, &mem_size);
+	if (ret != LPC_OK) {
+		usart_print("usb_core_init failed: ");
+		u32_to_str(ret, buf);
+		usart_print(buf);
+		goto error;
+	}
 
 	/* Init CDC params */
 	cdc_param.SetLineCode = SetLineCode;
@@ -346,47 +384,53 @@ void usb_init()
 	if ((cdc_param.mem_base + cdc_param.mem_size) >
 	    (USB_MEM_BASE + USB_MEM_SIZE)) {
 		usart_print("Overflows USB RAM!\r\n");
-		return;
+		goto error;
 	}
 
 	/* Initialise CDC */
-	usart_print("cdc->Init...\r\n");
 	ret = USBD_CDC_Init(mhUsb, &cdc_param, &mhCdc);
-	usart_print("ret: ");
-	u32_to_str(ret, buf);
-	usart_print(buf);
+	if (ret != LPC_OK) {
+		usart_print("CDC Init failed: ");
+		u32_to_str(ret, buf);
+		usart_print(buf);
+		goto error;
+	}
 
+	ep = USB_EP_INDEX_IN(USB_CDC_EP_DIF);
+	ret = USBD_RegisterEpHandler(mhUsb, ep, CDC_BulkIN_Hdlr, &mhCdc);
+	if (ret != LPC_OK) {
+		usart_print("RegisterEpHandler (in) failed: ");
+		u32_to_str(ret, buf);
+		usart_print(buf);
+		goto error;
+	}
 
-	/* Set up endpoint IRQ handlers */
-	usart_print("RegisterEpHandler (in)...\r\n");
-	ep_indx = USB_EP_INDEX_IN(desc_array.dif.ep_in.bEndpointAddress);
-	ret = USBD_RegisterEpHandler(mhUsb, ep_indx, CDC_BulkIN_Hdlr, &mhCdc);
-	usart_print("ret: ");
-	u32_to_str(ret, buf);
-	usart_print(buf);
+	ep = USB_EP_INDEX_OUT(USB_CDC_EP_DIF);
+	ret = USBD_RegisterEpHandler(mhUsb, ep, CDC_BulkOUT_Hdlr, &mhCdc);
+	if (ret != LPC_OK) {
+		usart_print("RegisterEpHandler (out) failed: ");
+		u32_to_str(ret, buf);
+		usart_print(buf);
+		goto error;
+	}
 
-	usart_print("RegisterEpHandler (out)...\r\n");
-	ep_indx = USB_EP_INDEX_OUT(desc_array.dif.ep_out.bEndpointAddress);
-	ret = USBD_RegisterEpHandler (mhUsb, ep_indx, CDC_BulkOUT_Hdlr, &mhCdc);
-	usart_print("ret: ");
-	u32_to_str(ret, buf);
-	usart_print(buf);
-
+	/* Enable IRQ */
+	NVIC_SetPriority(USB_IRQn, 0);
+	NVIC_EnableIRQ(USB_IRQn);
 
 	/* Connect to the bus */
         USBD_Connect(mhUsb, 1);
 
-	/* Enable IRQ */
-	NVIC_EnableIRQ(USB_IRQn);
-
-	memset(&usb_param, 0, sizeof(usb_param));
+	/*
+	 * FIXME: Not sure if we need to keep the cdc_param around.
+	 * It seems like no, but this should hopefully cause a crash if
+	 * that turns out not to be the case
+	 */
 	memset(&cdc_param, 0, sizeof(cdc_param));
 
-	delay_ms(5000);
+	return 0;
 
-	ret = USBD_API->hw->WriteEP(mhUsb, USB_CDC_EP_BULK_IN, "Hello over USB!\r\n",
-	                            17);
-	usart_print("wrote: ");
-	u32_to_str(ret, buf);
-	usart_print(buf);
+error:
+	usb_periph_exit();
+	return -1;
 }
