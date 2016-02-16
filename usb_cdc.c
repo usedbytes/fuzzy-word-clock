@@ -32,7 +32,7 @@ USBD_HANDLE_T mhUsb, mhCdc;
 const USB_DEVICE_DESCRIPTOR device_descriptor = {
 	.bLength = USB_DEVICE_DESC_SIZE,
 	.bDescriptorType = USB_DEVICE_DESCRIPTOR_TYPE,
-	.bcdUSB = 0x210,
+	.bcdUSB = 0x200,
 	.bDeviceClass = USB_DEVICE_CLASS_COMMUNICATIONS,
 	.bDeviceSubClass = 0,
 	.bDeviceProtocol = 0,
