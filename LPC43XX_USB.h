@@ -466,11 +466,11 @@ typedef ErrorCode_t (*USB_EP_HANDLER_T)(USBD_HANDLE_T hUsb, void* data, uint32_t
 /* USB descriptors data structure */
 typedef struct _USB_CORE_DESCS_T
 {
-  uint8_t *device_desc; /* Pointer to USB device descriptor */
-  uint8_t *string_desc; /* Pointer to array of USB string descriptors */
-  uint8_t *full_speed_desc; /* Pointer to USB FS device config descriptor */
-  uint8_t *high_speed_desc; /* Pointer to USB HS device config descriptor */
-  uint8_t *device_qualifier; /* Pointer to USB device qualifier descriptor */
+  const uint8_t *device_desc; /* Pointer to USB device descriptor */
+  const uint8_t *string_desc; /* Pointer to array of USB string descriptors */
+  const uint8_t *full_speed_desc; /* Pointer to USB FS device config descriptor */
+  const uint8_t *high_speed_desc; /* Pointer to USB HS device config descriptor */
+  const uint8_t *device_qualifier; /* Pointer to USB device qualifier descriptor */
 } USB_CORE_DESCS_T;
 
 /* USB device stack initilization parameter data structure */
