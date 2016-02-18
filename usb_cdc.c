@@ -223,6 +223,7 @@ const USB_CORE_DESCS_T core_desc = {
 ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 {
 	static bool done = false;
+
 	if ((event == USB_EVT_IN) && usb_ctx.tx_buf) {
 		uint32_t send = usb_ctx.tx_len;
 
@@ -241,9 +242,12 @@ ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 		usb_ctx.tx_buf += send;
 
 		/*
-		 * Only set done if the last packet was short.
-		 * Otherwise, we need to do one more iteration for a
-		 * zero-length-packet
+		 * If the last packet was full (USB_MAX_PACKET0), then
+		 * we need to go around one more time to send a zero-length
+		 * packet, so don't set 'done'
+		 * Otherwise (or after our zero-length-packet), the next
+		 * interrupt will mark the end of transmission, so we can
+		 * set 'done' now and clear tx_buf at the next IRQ.
 		 */
 		if (!usb_ctx.tx_len && (send < USB_MAX_PACKET0))
 			done = true;
@@ -267,6 +271,7 @@ ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 	dump_mem(&state, 2);
 	usb_ctx.dtr = (state & 0x1);
 
+	/* Terminate any ongoing transmission */
 	if (!usb_ctx.dtr) {
 		usb_ctx.tx_len = 0;
 		usb_ctx.tx_buf = NULL;
@@ -445,17 +450,20 @@ error:
 
 void usb_usart_send(const char *buf, size_t len)
 {
-	if (!usb_ctx.dtr) {
-		usart_print("Notready\r\n");
+	if (!usb_ctx.dtr)
 		return;
-	}
 
 	NVIC_DisableIRQ(USB_IRQn);
 	usb_ctx.tx_buf = buf;
 	usb_ctx.tx_len = len;
+	/*
+	 * Call the interrupt handler directly to send the first
+	 * packet
+	 */
 	CDC_BulkIN_Hdlr(usb_ctx.core_hnd, &usb_ctx, USB_EVT_IN);
 	NVIC_EnableIRQ(USB_IRQn);
 
+	/* Wait for finish */
 	while(usb_ctx.tx_buf != NULL);
 }
 
