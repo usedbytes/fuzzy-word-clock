@@ -10,12 +10,8 @@
 
 int main(void) {
 	const char *p = (const char *)(0x000000c0);
-	char buf[11];
 	uint32_t start, duration;
 
-	buf[8] = '\r';
-	buf[9] = '\n';
-	buf[10] = '\0';
 	SystemInit();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
