@@ -30,12 +30,15 @@
 
 #define CDC_NO_CALL_MGMT_FUNC_DESC
 
+uint32_t evt_in, sof;
+
 struct usb_ctx {
 	USBD_HANDLE_T core_hnd;
 	USBD_HANDLE_T cdc_hnd;
 	volatile bool dtr;
 
-	volatile bool tx_busy;
+	volatile size_t tx_len;
+	volatile uint8_t *volatile tx_buf;
 
 	volatile uint8_t rx_buf[128];
 	volatile uint8_t head, tail;
@@ -221,10 +224,34 @@ const USB_CORE_DESCS_T core_desc = {
 
 ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 {
-	switch (event) {
-		case USB_EVT_IN:
-			usb_ctx.tx_busy = false;
-			break;
+	static bool done = false;
+	if ((event == USB_EVT_IN) && usb_ctx.tx_buf) {
+		uint32_t send = usb_ctx.tx_len;
+
+		if (done) {
+			usb_ctx.tx_buf = NULL;
+			done = false;
+			return LPC_OK;
+		}
+
+		if (send > USB_MAX_PACKET0)
+		       send = USB_MAX_PACKET0;
+
+		send = USBD_WriteEP(usb_ctx.core_hnd, USB_CDC_EP_BULK_IN,
+				    usb_ctx.tx_buf, send);
+		usb_ctx.tx_len -= send;
+		usb_ctx.tx_buf += send;
+
+		/*
+		 * Only set done if the last packet was short.
+		 * Otherwise, we need to do one more iteration for a
+		 * zero-length-packet
+		 */
+		if (!usb_ctx.tx_len && (send < USB_MAX_PACKET0))
+			done = true;
+
+		evt_in++;
+		//usart_print("in\r\n");
 	}
 
 	return LPC_OK;
@@ -241,7 +268,17 @@ ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
 
 ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 {
+	usart_print("LineState\r\n");
+	dump_mem(&state, 2);
 	usb_ctx.dtr = (state & 0x1);
+
+	if (!usb_ctx.dtr) {
+		usb_ctx.tx_len = 0;
+		usb_ctx.tx_buf = NULL;
+		USBD_EnableEvent(usb_ctx.core_hnd, 0, USB_EVT_SOF, 0);
+	} else {
+		USBD_EnableEvent(usb_ctx.core_hnd, 0, USB_EVT_SOF, 1);
+	}
 
 	return LPC_OK;
 }
@@ -254,6 +291,11 @@ ErrorCode_t SendBreak(USBD_HANDLE_T hCDC, uint16_t mstime)
 	return LPC_OK;
 }
 
+ErrorCode_t SOF_Event(USBD_HANDLE_T hUsb)
+{
+	sof++;
+	return LPC_OK;
+}
 
 void USB_Handler(void)
 {
@@ -292,6 +334,7 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	usb_param.usb_reg_base = LPC_USB_BASE;
 	usb_param.mem_base = mem_base;
 	usb_param.max_num_ep = USB_NUM_ENDPOINTS;
+	usb_param.USB_SOF_Event = SOF_Event;
 
 	/*
 	 * The in-ROM MemSize calculation is wrong/limited:
@@ -415,29 +458,23 @@ error:
 	return -1;
 }
 
-#define USB_PKT_SEND_TIMEOUT_MS 100
 void usb_usart_send(const char *buf, size_t len)
 {
-	uint32_t sent;
-
-	while (len) {
-		if (!usb_ctx.dtr)
-			return;
-
-		usb_ctx.tx_busy = true;
-		sent = len > USB_MAX_PACKET0 ? USB_MAX_PACKET0 : len;
-		sent = USBD_WriteEP(usb_ctx.core_hnd, USB_CDC_EP_BULK_IN, buf,
-				    sent);
-		if (sent) {
-			len -= sent;
-			buf += sent;
-		} else {
-			usb_ctx.tx_busy = false;
-		}
+	if (!usb_ctx.dtr) {
+		usart_print("Notready\r\n");
+		return;
 	}
+
+	NVIC_DisableIRQ(USB_IRQn);
+	usb_ctx.tx_buf = buf;
+	usb_ctx.tx_len = len;
+	CDC_BulkIN_Hdlr(usb_ctx.core_hnd, &usb_ctx, USB_EVT_IN);
+	NVIC_EnableIRQ(USB_IRQn);
+
+	while(usb_ctx.tx_buf != NULL);
 }
 
-bool usb_usart_dtr()
+bool usb_usart_dtr(void)
 {
 	return usb_ctx.dtr;
 }
