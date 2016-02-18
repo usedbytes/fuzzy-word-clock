@@ -30,8 +30,6 @@
 
 #define CDC_NO_CALL_MGMT_FUNC_DESC
 
-uint32_t evt_in, sof;
-
 struct usb_ctx {
 	USBD_HANDLE_T core_hnd;
 	USBD_HANDLE_T cdc_hnd;
@@ -249,9 +247,6 @@ ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 		 */
 		if (!usb_ctx.tx_len && (send < USB_MAX_PACKET0))
 			done = true;
-
-		evt_in++;
-		//usart_print("in\r\n");
 	}
 
 	return LPC_OK;
@@ -275,9 +270,6 @@ ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 	if (!usb_ctx.dtr) {
 		usb_ctx.tx_len = 0;
 		usb_ctx.tx_buf = NULL;
-		USBD_EnableEvent(usb_ctx.core_hnd, 0, USB_EVT_SOF, 0);
-	} else {
-		USBD_EnableEvent(usb_ctx.core_hnd, 0, USB_EVT_SOF, 1);
 	}
 
 	return LPC_OK;
@@ -288,12 +280,6 @@ ErrorCode_t SendBreak(USBD_HANDLE_T hCDC, uint16_t mstime)
 	usart_print("SendBreak:\r\n");
 	dump_mem(&mstime, sizeof(mstime));
 
-	return LPC_OK;
-}
-
-ErrorCode_t SOF_Event(USBD_HANDLE_T hUsb)
-{
-	sof++;
 	return LPC_OK;
 }
 
@@ -334,7 +320,6 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	usb_param.usb_reg_base = LPC_USB_BASE;
 	usb_param.mem_base = mem_base;
 	usb_param.max_num_ep = USB_NUM_ENDPOINTS;
-	usb_param.USB_SOF_Event = SOF_Event;
 
 	/*
 	 * The in-ROM MemSize calculation is wrong/limited:
