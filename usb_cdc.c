@@ -432,7 +432,7 @@ int usb_init()
 	NVIC_EnableIRQ(USB_IRQn);
 
 	/* Connect to the bus */
-        USBD_Connect(usb_ctx.core_hnd, 1);
+	USBD_Connect(usb_ctx.core_hnd, 1);
 
 	/*
 	 * FIXME: Not sure if we need to keep the cdc_param around.
