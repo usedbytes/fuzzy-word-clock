@@ -38,8 +38,13 @@ struct usb_ctx {
 	volatile size_t tx_len;
 	volatile uint8_t *volatile tx_buf;
 
-	volatile uint8_t rx_buf[128];
-	volatile uint8_t head, tail;
+	/* Private packet buffers */
+	int rx_pidx;
+	uint8_t rx_pbuf[2][USB_MAX_PACKET0];
+	size_t rx_plen[2];
+
+	volatile size_t rx_len;
+	volatile uint8_t *volatile rx_buf;
 	volatile bool overrun;
 };
 
@@ -256,12 +261,64 @@ ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 	return LPC_OK;
 }
 
+static bool update_rx_buf() {
+	int idx = !usb_ctx.rx_pidx;
+
+	if (!usb_ctx.rx_buf) {
+		if (usb_ctx.rx_plen[idx]) {
+			/* Give a full buffer to the consumer */
+			usb_ctx.rx_len = usb_ctx.rx_plen[idx];
+			usb_ctx.rx_buf = usb_ctx.rx_pbuf[idx];
+			usart_print("give ");
+			print_u32(idx);
+
+			/*
+			 * Mark the packet buffer as drained. The BulkOUT
+			 * handler won't use it while idx still points to
+			 * it.
+			 */
+			usb_ctx.rx_plen[idx] = 0;
+			usb_ctx.rx_pidx = idx;
+
+			return false;
+		}
+	}
+
+	return usb_ctx.rx_plen[idx];
+};
+
 ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
                uint32_t event)
 {
-	char buf[USB_HS_MAX_BULK_PACKET];
-        int len = USBD_API->hw->ReadEP(hUsb, USB_CDC_EP_BULK_OUT, buf);
-	usart_send(buf, len);
+	int idx = !usb_ctx.rx_pidx;
+	uint8_t *buf = usb_ctx.rx_pbuf[idx];
+	uint32_t len;
+	usart_print(">BO\r\n");
+
+	if (usb_ctx.rx_plen[idx]) {
+		usart_print("Overrun!\r\n");
+		usb_ctx.overrun = true;
+	}
+
+	len = USBD_API->hw->ReadEP(hUsb, USB_CDC_EP_BULK_OUT, buf);
+	usb_ctx.rx_plen[idx] = len;
+	usart_print("fill ");
+	print_u32(idx);
+	print_u32(len);
+
+	if (update_rx_buf())
+		USBD_EnableEvent(hUsb, 0, USB_EVT_SOF, 1);
+
+	usart_print("<BO\r\n");
+	return LPC_OK;
+}
+
+ErrorCode_t SOF_Event(USBD_HANDLE_T hUsb)
+{
+
+	if (!update_rx_buf())
+		USBD_EnableEvent(hUsb, 0, USB_EVT_SOF, 0);
+
 	return LPC_OK;
 }
 
@@ -325,6 +382,7 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	usb_param.usb_reg_base = LPC_USB_BASE;
 	usb_param.mem_base = mem_base;
 	usb_param.max_num_ep = USB_NUM_ENDPOINTS;
+	usb_param.USB_SOF_Event = SOF_Event;
 
 	/*
 	 * The in-ROM MemSize calculation is wrong/limited:
@@ -465,6 +523,36 @@ void usb_usart_send(const char *buf, size_t len)
 
 	/* Wait for finish */
 	while(usb_ctx.tx_buf != NULL);
+}
+
+int usb_usart_recv(char *buf, size_t len, int timeout)
+{
+	size_t recv = len;
+	uint32_t end = msTicks + timeout;
+	while (recv) {
+
+		/* Wait for a buffer or timeout */
+		while (!usb_ctx.rx_buf && timeout > 0 && msTicks < end);
+		if (timeout > 0 && msTicks >= end)
+			break;
+
+		/* Critical section - drain the rx_buf */
+		NVIC_DisableIRQ(USB_IRQn);
+		print_u32(usb_ctx.rx_len);
+		while (usb_ctx.rx_len && recv) {
+			*buf++ = *usb_ctx.rx_buf++;
+			usb_ctx.rx_len--;
+			recv--;
+		}
+
+		/* If we emptied that one, ask for a new one */
+		if (!usb_ctx.rx_len)
+			usb_ctx.rx_buf = NULL;
+		NVIC_EnableIRQ(USB_IRQn);
+
+	}
+
+	return len - recv;
 }
 
 bool usb_usart_dtr(void)

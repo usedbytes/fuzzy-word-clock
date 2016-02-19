@@ -9,6 +9,7 @@
 #include "util.h"
 
 int main(void) {
+	char buf[64];
 	const char *p = (const char *)(0x000000c0);
 	uint32_t start, duration;
 
@@ -27,15 +28,11 @@ int main(void) {
 	usart_print("Done\r\n");
 
 	while(1) {
-		int i = 1024;
-		start = msTicks;
-		while (i--)
-			usb_usart_send(p, 1024);
-		duration = msTicks - start;
-		usart_print("Transferred 1M in ");
-		print_u32(duration);
-
-		delay_ms(10000);
+		size_t len = usb_usart_recv(buf, sizeof(buf), 1000);
+		usart_print("Received: '");
+		usart_send(buf, len);
+		usart_print("'\r\n");
+		print_u32(len);
 	}
 
 	return 0;
