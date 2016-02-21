@@ -36,7 +36,7 @@ struct usb_ctx {
 	volatile bool dtr;
 
 	volatile size_t tx_len;
-	volatile uint8_t *volatile tx_buf;
+	const uint8_t *volatile tx_buf;
 
 #define USB_RX_BUF_SIZE (2 * USB_MAX_PACKET0)
 #define USB_RX_BUF_END  (usb_ctx.rx_buf + USB_RX_BUF_SIZE)
@@ -485,7 +485,7 @@ void usb_usart_send(const char *buf, size_t len)
 		return;
 
 	NVIC_DisableIRQ(USB_IRQn);
-	usb_ctx.tx_buf = buf;
+	usb_ctx.tx_buf = (const uint8_t *)buf;
 	usb_ctx.tx_len = len;
 	/*
 	 * Call the interrupt handler directly to send the first
