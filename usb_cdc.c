@@ -38,14 +38,13 @@ struct usb_ctx {
 	volatile size_t tx_len;
 	volatile uint8_t *volatile tx_buf;
 
-	/* Private packet buffers */
-	int rx_pidx;
-	uint8_t rx_pbuf[2][USB_MAX_PACKET0];
-	size_t rx_plen[2];
-
+#define USB_RX_BUF_SIZE (2 * USB_MAX_PACKET0)
+#define USB_RX_BUF_END  (usb_ctx.rx_buf + USB_RX_BUF_SIZE)
+	uint8_t rx_buf[USB_RX_BUF_SIZE];
+	/* Producer writes to head, consumer reads from tail */
+	volatile uint8_t *volatile rx_head;
+	volatile uint8_t *volatile rx_tail;
 	volatile size_t rx_len;
-	volatile uint8_t *volatile rx_buf;
-	volatile bool overrun;
 };
 
 struct usb_ctx usb_ctx;
@@ -261,63 +260,34 @@ ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 	return LPC_OK;
 }
 
-static bool update_rx_buf() {
-	int idx = !usb_ctx.rx_pidx;
-
-	if (!usb_ctx.rx_buf) {
-		if (usb_ctx.rx_plen[idx]) {
-			/* Give a full buffer to the consumer */
-			usb_ctx.rx_len = usb_ctx.rx_plen[idx];
-			usb_ctx.rx_buf = usb_ctx.rx_pbuf[idx];
-			usart_print("give ");
-			print_u32(idx);
-
-			/*
-			 * Mark the packet buffer as drained. The BulkOUT
-			 * handler won't use it while idx still points to
-			 * it.
-			 */
-			usb_ctx.rx_plen[idx] = 0;
-			usb_ctx.rx_pidx = idx;
-
-			return false;
-		}
-	}
-
-	return usb_ctx.rx_plen[idx];
-};
-
 ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
                uint32_t event)
 {
-	int idx = !usb_ctx.rx_pidx;
-	uint8_t *buf = usb_ctx.rx_pbuf[idx];
+	static uint8_t buf[USB_MAX_PACKET0];
+	uint8_t *p = buf;
 	uint32_t len;
-	usart_print(">BO\r\n");
-
-	if (usb_ctx.rx_plen[idx]) {
-		usart_print("Overrun!\r\n");
-		usb_ctx.overrun = true;
-	}
 
 	len = USBD_API->hw->ReadEP(hUsb, USB_CDC_EP_BULK_OUT, buf);
-	usb_ctx.rx_plen[idx] = len;
-	usart_print("fill ");
-	print_u32(idx);
-	print_u32(len);
+	/*
+	 * On overrun, we jump "tail" to the first non-overwritten byte,
+	 * and set rx_len to the buffer size
+	 * FIXME: Overrun reporting?
+	 */
+	if (len + usb_ctx.rx_len > USB_RX_BUF_SIZE) {
+		usb_ctx.rx_tail += (len + usb_ctx.rx_len) - USB_RX_BUF_SIZE;
+		usb_ctx.rx_len = USB_RX_BUF_SIZE;
+		if (usb_ctx.rx_tail >= USB_RX_BUF_END)
+			usb_ctx.rx_tail -= USB_RX_BUF_SIZE;
+	} else {
+		usb_ctx.rx_len += len;
+	}
 
-	if (update_rx_buf())
-		USBD_EnableEvent(hUsb, 0, USB_EVT_SOF, 1);
-
-	usart_print("<BO\r\n");
-	return LPC_OK;
-}
-
-ErrorCode_t SOF_Event(USBD_HANDLE_T hUsb)
-{
-
-	if (!update_rx_buf())
-		USBD_EnableEvent(hUsb, 0, USB_EVT_SOF, 0);
+	/* Fill the rx_buf */
+	while (len--) {
+		*usb_ctx.rx_head++ = *p++;
+		if (usb_ctx.rx_head >= USB_RX_BUF_END)
+			usb_ctx.rx_head = usb_ctx.rx_buf;
+	}
 
 	return LPC_OK;
 }
@@ -382,7 +352,6 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	usb_param.usb_reg_base = LPC_USB_BASE;
 	usb_param.mem_base = mem_base;
 	usb_param.max_num_ep = USB_NUM_ENDPOINTS;
-	usb_param.USB_SOF_Event = SOF_Event;
 
 	/*
 	 * The in-ROM MemSize calculation is wrong/limited:
@@ -443,6 +412,10 @@ int usb_init()
 		usart_print(buf);
 		goto error;
 	}
+
+	/* Initialise Rx buffer */
+	usb_ctx.rx_head = usb_ctx.rx_buf;
+	usb_ctx.rx_tail = usb_ctx.rx_buf;
 
 	/* Init CDC params */
 	cdc_param.SendBreak = SendBreak;
@@ -530,26 +503,26 @@ int usb_usart_recv(char *buf, size_t len, int timeout)
 	size_t recv = len;
 	uint32_t end = msTicks + timeout;
 	while (recv) {
-
-		/* Wait for a buffer or timeout */
-		while (!usb_ctx.rx_buf && timeout > 0 && msTicks < end);
-		if (timeout > 0 && msTicks >= end)
-			break;
-
-		/* Critical section - drain the rx_buf */
+		/*
+		 * Critical section - drain the rx_buf. Always try this first.
+		 * This should perhaps be done in chunks as we have interrupts
+		 * disabled.
+		 */
 		NVIC_DisableIRQ(USB_IRQn);
-		print_u32(usb_ctx.rx_len);
 		while (usb_ctx.rx_len && recv) {
-			*buf++ = *usb_ctx.rx_buf++;
+			*buf++ = *usb_ctx.rx_tail++;
+			if (usb_ctx.rx_tail >= USB_RX_BUF_END)
+				usb_ctx.rx_tail = usb_ctx.rx_buf;
 			usb_ctx.rx_len--;
 			recv--;
 		}
-
-		/* If we emptied that one, ask for a new one */
-		if (!usb_ctx.rx_len)
-			usb_ctx.rx_buf = NULL;
 		NVIC_EnableIRQ(USB_IRQn);
 
+		/* Wait for more data or timeout */
+		while (!usb_ctx.rx_len && timeout >= 0 && msTicks < end);
+
+		if (timeout >= 0 && msTicks >= end)
+			break;
 	}
 
 	return len - recv;
