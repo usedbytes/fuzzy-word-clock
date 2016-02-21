@@ -19,5 +19,8 @@ void usb_usart_send(const char *buf, size_t len);
  */
 int usb_usart_recv(char *buf, size_t len, int timeout);
 
+/* Empty the receive buffer, discarding all data. */
+void usb_usart_flush_rx(void);
+
 /* Return "true" if the USB serial port is connected to a host */
 bool usb_usart_dtr(void);

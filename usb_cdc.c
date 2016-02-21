@@ -528,6 +528,14 @@ int usb_usart_recv(char *buf, size_t len, int timeout)
 	return len - recv;
 }
 
+void usb_usart_flush_rx(void)
+{
+	NVIC_DisableIRQ(USB_IRQn);
+	usb_ctx.rx_head = usb_ctx.rx_tail = usb_ctx.rx_buf;
+	usb_ctx.rx_len = 0;
+	NVIC_EnableIRQ(USB_IRQn);
+}
+
 bool usb_usart_dtr(void)
 {
 	return usb_ctx.dtr;
