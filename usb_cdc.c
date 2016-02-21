@@ -502,6 +502,14 @@ void usb_usart_send(const char *buf, size_t len)
 	while(usb_ctx.tx_buf != NULL);
 }
 
+void usb_usart_print(const char *str)
+{
+	size_t i = 0;
+	while (str[i++]);
+
+	usb_usart_send(str, i);
+}
+
 int usb_usart_recv(char *buf, size_t len, int timeout)
 {
 	size_t recv = len;

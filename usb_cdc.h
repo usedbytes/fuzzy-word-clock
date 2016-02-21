@@ -1,6 +1,8 @@
 /* USB CDC UART */
 #ifndef __USB_CDC_H__
 #define __USB_CDC_H__
+#include <stdbool.h>
+#include <stddef.h>
 
 int usb_init(void);
 
@@ -9,6 +11,9 @@ int usb_init(void);
  * Blocks until the transfer is complete
  */
 void usb_usart_send(const char *buf, size_t len);
+
+/* Send a zero-terminated string */
+void usb_usart_print(const char *str);
 
 /** Receive data from the USB serial port.
  *
