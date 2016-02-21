@@ -1,4 +1,6 @@
 /* USB CDC UART */
+#ifndef __USB_CDC_H__
+#define __USB_CDC_H__
 
 int usb_init(void);
 
@@ -24,3 +26,5 @@ void usb_usart_flush_rx(void);
 
 /* Return "true" if the USB serial port is connected to a host */
 bool usb_usart_dtr(void);
+
+#endif /* __USB_CDC_H__ */

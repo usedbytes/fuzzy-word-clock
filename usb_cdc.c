@@ -395,6 +395,10 @@ int usb_init()
 	uint32_t ep;
 	char buf[11];
 
+	/* Check if we're alredy initialised */
+	if (usb_ctx.core_hnd && usb_ctx.cdc_hnd)
+		return 0;
+
 	buf[8] = '\r';
 	buf[9] = '\n';
 	buf[10] = '\0';
