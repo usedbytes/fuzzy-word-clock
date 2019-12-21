@@ -3,7 +3,6 @@
 
 #include "LPC11Uxx.h"
 
-#include "usart.h"
 #include "util.h"
 #include "LPC43XX_USB.h"
 
@@ -294,8 +293,6 @@ ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
 
 ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 {
-	usart_print("LineState\r\n");
-	dump_mem(&state, 2);
 	usb_ctx.dtr = (state & 0x1);
 
 	/* Terminate any ongoing transmission */
@@ -309,9 +306,6 @@ ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 
 ErrorCode_t SendBreak(USBD_HANDLE_T hCDC, uint16_t mstime)
 {
-	usart_print("SendBreak:\r\n");
-	dump_mem(&mstime, sizeof(mstime));
-
 	return LPC_OK;
 }
 
@@ -362,7 +356,6 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	usb_param.mem_size = req_size;
 
 	if (req_size > *mem_size) {
-		usart_print("Not enough space for core API\r\n");
 		return ERR_FAILED;
 	}
 	*mem_size = req_size;
@@ -372,8 +365,6 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 		return ret;
 
 	if (usb_param.mem_size) {
-		usart_print("Unexpected mem_size. usb_param:\r\n");
-		dump_mem(&usb_param, sizeof(usb_param));
 		return ERR_FAILED;
 	}
 
@@ -393,27 +384,15 @@ int usb_init()
 	ErrorCode_t ret;
 	uint32_t mem_size = USB_MEM_SIZE;
 	uint32_t ep;
-	char buf[11];
 
 	/* Check if we're alredy initialised */
 	if (usb_ctx.core_hnd && usb_ctx.cdc_hnd)
 		return 0;
 
-	buf[8] = '\r';
-	buf[9] = '\n';
-	buf[10] = '\0';
-
-	usart_print("Got USB ROM API version: ");
-	u32_to_str(USBD_API->version, buf);
-	usart_print(buf);
-
 	usb_periph_init();
 
 	ret = usb_core_init(USB_MEM_BASE, &mem_size);
 	if (ret != LPC_OK) {
-		usart_print("usb_core_init failed: ");
-		u32_to_str(ret, buf);
-		usart_print(buf);
 		goto error;
 	}
 
@@ -431,34 +410,24 @@ int usb_init()
 
 	if ((cdc_param.mem_base + cdc_param.mem_size) >
 	    (USB_MEM_BASE + USB_MEM_SIZE)) {
-		usart_print("Overflows USB RAM!\r\n");
 		goto error;
 	}
 
 	/* Initialise CDC */
 	ret = USBD_CDC_Init(usb_ctx.core_hnd, &cdc_param, &usb_ctx.cdc_hnd);
 	if (ret != LPC_OK) {
-		usart_print("CDC Init failed: ");
-		u32_to_str(ret, buf);
-		usart_print(buf);
 		goto error;
 	}
 
 	ep = USB_EP_INDEX_IN(USB_CDC_EP_DIF);
 	ret = USBD_RegisterEpHandler(usb_ctx.core_hnd, ep, CDC_BulkIN_Hdlr, &usb_ctx);
 	if (ret != LPC_OK) {
-		usart_print("RegisterEpHandler (in) failed: ");
-		u32_to_str(ret, buf);
-		usart_print(buf);
 		goto error;
 	}
 
 	ep = USB_EP_INDEX_OUT(USB_CDC_EP_DIF);
 	ret = USBD_RegisterEpHandler(usb_ctx.core_hnd, ep, CDC_BulkOUT_Hdlr, &usb_ctx);
 	if (ret != LPC_OK) {
-		usart_print("RegisterEpHandler (out) failed: ");
-		u32_to_str(ret, buf);
-		usart_print(buf);
 		goto error;
 	}
 

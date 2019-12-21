@@ -158,3 +158,68 @@ size_t usart_recv(char *buffer, size_t len)
 	}
 	return recv;
 }
+
+void u32_to_str(uint32_t val, char *buf)
+{
+	int i = 8;
+	while (i--) {
+		if ((val & 0xf) <= 9)
+			buf[i] = (val & 0xf) + '0';
+		else
+			buf[i] = (val & 0xf) + ('a' - 10);
+		val >>= 4;
+	}
+}
+
+void dump_mem(const void *addr, size_t len)
+{
+	const char *caddr = addr;
+	char c;
+	char align = ((uint32_t)caddr) & 0xf;
+	char buf[] = "deadbeef:";
+
+	len += ((uint32_t)caddr) & 0xf;
+
+
+	u32_to_str((uint32_t)caddr, buf);
+	usart_send(buf, 9);
+	align = 1 + (align * 3);
+	while (align--)
+		usart_send(" ", 1);
+	usart_send("v", 1);
+	usart_send("\r\n", 2);
+
+	caddr = (const char *)((uint32_t)caddr & ~0xf);
+
+	while (len--) {
+		if (!((uint32_t)caddr & 0xf)) {
+			u32_to_str((uint32_t)caddr, buf);
+			usart_send(buf, 9);
+		}
+
+		c = *caddr;
+		caddr++;
+
+		buf[0] = ' ';
+		if ((c & 0xf) <= 9)
+			buf[2] = (c & 0xf) + '0';
+		else
+			buf[2] = (c & 0xf) + ('a' - 10);
+		c >>= 4;
+		if ((c & 0xf) <= 9)
+			buf[1] = (c & 0xf) + '0';
+		else
+			buf[1] = (c & 0xf) + ('a' - 10);
+		usart_send(buf, 3);
+
+		if (!len || !((uint32_t)caddr & 0xf))
+			usart_send("\r\n", 2);
+	}
+}
+
+void print_u32(uint32_t val)
+{
+	static char buf[] = "deadbeef\r\n";
+	u32_to_str(val, buf);
+	usart_print(buf);
+}

@@ -59,4 +59,9 @@ void usart_print(const char *str);
  */
 size_t usart_recv(char *buffer, size_t len);
 
+void u32_to_str(uint32_t val, char *buf);
+void print_u32(uint32_t val);
+
+void dump_mem(const void *addr, size_t len);
+
 #endif /* __USART_H__ */
