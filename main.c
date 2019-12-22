@@ -7,6 +7,15 @@
 #include "usb_cdc.h"
 #include "util.h"
 
+#define PIN_LED0 (1 << 15)
+#define PIN_LED1 (1 << 14)
+#define PIN_LED2 (1 << 13)
+#define PIN_LED3 (1 << 12)
+#define PIN_LED4 (1 << 11)
+#define PIN_LED5 (1 << 10)
+#define PIN_LED6 (1 <<  9)
+#define PIN_LED7 (1 <<  8)
+
 #define PIN_CH2 (1 << 20)
 #define PIN_CH1 (1 << 27)
 #define PIN_CH0 (1 << 26)
@@ -53,7 +62,7 @@ void TIMER_16_0_Handler(void) {
 		timer->TC = 0;
 		timer->MR3 = period - 1;
 
-		LPC_GPIO->MPIN[1] = set[bit++];
+		LPC_GPIO->MPIN[0] = set[bit++];
 
 		if (bit == PWM_RESOLUTION) {
 			set = bitslices[active_set];
@@ -96,11 +105,32 @@ void set_pwm(uint16_t val16) {
 	volatile uint32_t *slice = bitslices[!active_set];
 	for (i = 0; i < PWM_RESOLUTION; i++, val16 >>= 1) {
 		slice[i] = (
-			(val16 & 1) * PIN_CH2 |
+			(val16 & 1) * PIN_LED0 |
+			(val16 & 1) * PIN_LED1 |
+			(val16 & 1) * PIN_LED2 |
+			(val16 & 1) * PIN_LED3 |
+			(val16 & 1) * PIN_LED4 |
+			(val16 & 1) * PIN_LED5 |
+			(val16 & 1) * PIN_LED6 |
+			(val16 & 1) * PIN_LED7 |
 			0
 		);
 	}
 	active_set = !active_set;
+}
+
+void setup_leds(void)
+{
+	/* Set all our LED pins as GPIO outputs */
+	set_with_mask(&LPC_IOCON->PIO0_8, 0x3, 0x0);
+	set_with_mask(&LPC_IOCON->PIO0_9, 0x3, 0x0);
+	set_with_mask(&LPC_IOCON->SWCLK_PIO0_10, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TDI_PIO0_11, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TMS_PIO0_12, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TDO_PIO0_13, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->TRST_PIO0_14, 0x3, 0x1);
+	set_with_mask(&LPC_IOCON->SWDIO_PIO0_15, 0x3, 0x1);
+	LPC_GPIO->DIR[0] |= (0xFF << 8);
 }
 
 int main(void) {
@@ -114,11 +144,10 @@ int main(void) {
 	LPC_GPIO->DIR[1] |= PIN_CH0 | PIN_CH1 | PIN_CH2;
 
 	usb_init();
+	setup_leds();
 
 	LPC_GPIO->CLR[1] = PIN_CH0 | PIN_CH1 | PIN_CH2;
 	delay_ms(100);
-
-	LPC_GPIO->MASK[1] = ~(PIN_CH2);
 
 	init_timer16(0);
 
