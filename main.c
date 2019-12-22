@@ -17,26 +17,25 @@
 #define PIN_LED7 (1 <<  8)
 
 #ifdef DEBUG
-#define PIN_DBG (1 << 26)
-#define DBG_HIGH() LPC_GPIO->SET[1] = PIN_DBG
-#define DBG_LOW()  LPC_GPIO->CLR[1] = PIN_DBG
-#define DBG_TOGGLE()  LPC_GPIO->NOT[1] = PIN_DBG
+#define DBG_PORT (0)
+#define DBG_PIN  (1 << 19)
+#define DBG_HIGH()   LPC_GPIO->SET[DBG_PORT] = DBG_PIN
+#define DBG_LOW()    LPC_GPIO->CLR[DBG_PORT] = DBG_PIN
+#define DBG_TOGGLE() LPC_GPIO->NOT[DBG_PORT] = DBG_PIN
 #else
 #define DBG_HIGH() {}
 #define DBG_LOW()  {}
 #define DBG_TOGGLE() {}
 #endif
 
-#define CH1_HIGH() LPC_GPIO->SET[1] = PIN_CH1;
-#define CH1_LOW()  LPC_GPIO->CLR[1] = PIN_CH1;
-#define CH1_TOGGLE()  LPC_GPIO->NOT[1] = PIN_CH1;
-
+#define PWM_CHANNELS   8
 #define PWM_RESOLUTION 8
-
 #define MIN_CYCLES_LOG2 2
 
 volatile uint32_t bitslices[2][PWM_RESOLUTION];
-volatile int active_set = 0;
+volatile uint8_t in_use_set = 0;
+volatile uint8_t queued_set = 0;
+volatile uint16_t values[PWM_CHANNELS];
 
 void TIMER_16_0_Handler(void) {
 	static int bit = 0;
@@ -63,10 +62,12 @@ void TIMER_16_0_Handler(void) {
 		timer->TC = 0;
 		timer->MR3 = period - 1;
 
-		LPC_GPIO->MPIN[0] = set[bit++];
+		LPC_GPIO->MPIN[0] = set[bit];
+		bit++;
 
 		if (bit == PWM_RESOLUTION) {
-			set = bitslices[active_set];
+			in_use_set = queued_set;
+			set = bitslices[in_use_set];
 			bit = 0;
 		}
 		period = 1 << (MIN_CYCLES_LOG2 + bit);
@@ -75,21 +76,16 @@ void TIMER_16_0_Handler(void) {
 	DBG_LOW();
 }
 
-static void init_timer16(int idx)
+static void init_timer16()
 {
-	static LPC_CTxxBx_Type *const timers[] = {
-		LPC_CT16B0,
-		LPC_CT16B1,
-	};
-
-	LPC_CTxxBx_Type *timer = timers[idx];
+	LPC_CTxxBx_Type *timer = LPC_CT16B0;
 
 	/* Depend on the interrupt numbering being sane */
-	NVIC_SetPriority(TIMER_16_0_IRQn + idx, 3);
-	NVIC_EnableIRQ(TIMER_16_0_IRQn + idx);
+	NVIC_SetPriority(TIMER_16_0_IRQn, 3);
+	NVIC_EnableIRQ(TIMER_16_0_IRQn);
 
 	/* Turn on the clock - 48MHz */
-	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << (7 + idx));
+	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 7);
 
 	timer->PR = 163;
 
@@ -99,28 +95,53 @@ static void init_timer16(int idx)
 	timer->TCR = 0x1;
 }
 
-void set_pwm(uint16_t val16) {
-	int i;
-	val16 >>= (16 - PWM_RESOLUTION);
+const uint8_t gamma8[] = {
+	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+	1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
+	2,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,
+	5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,  9,  9,  9, 10,
+	10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
+	17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
+	25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
+	37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
+	51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
+	69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
+	90, 92, 93, 95, 96, 98, 99,101,102,104,105,107,109,110,112,114,
+	115,117,119,120,122,124,126,127,129,131,133,135,137,138,140,142,
+	144,146,148,150,152,154,156,158,160,162,164,167,169,171,173,175,
+	177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
+	215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
 
-	volatile uint32_t *slice = bitslices[!active_set];
-	for (i = 0; i < PWM_RESOLUTION; i++, val16 >>= 1) {
+void pwm_flip() {
+	int i;
+	uint16_t mask = 1 << (16 - PWM_RESOLUTION);
+
+	// Only one flip in flight
+	while (queued_set != in_use_set);
+
+	volatile uint32_t *slice = bitslices[!queued_set];
+	for (i = 0; i < PWM_RESOLUTION; i++, mask <<= 1) {
 		slice[i] = (
-			(val16 & 1) * PIN_LED0 |
-			(val16 & 1) * PIN_LED1 |
-			(val16 & 1) * PIN_LED2 |
-			(val16 & 1) * PIN_LED3 |
-			(val16 & 1) * PIN_LED4 |
-			(val16 & 1) * PIN_LED5 |
-			(val16 & 1) * PIN_LED6 |
-			(val16 & 1) * PIN_LED7 |
-			0
+			   ((values[0] & mask) ? PIN_LED0 : 0) |
+			   ((values[1] & mask) ? PIN_LED1 : 0) |
+			   ((values[2] & mask) ? PIN_LED2 : 0) |
+			   ((values[3] & mask) ? PIN_LED3 : 0) |
+			   ((values[4] & mask) ? PIN_LED4 : 0) |
+			   ((values[5] & mask) ? PIN_LED5 : 0) |
+			   ((values[6] & mask) ? PIN_LED6 : 0) |
+			   ((values[7] & mask) ? PIN_LED7 : 0)
 		);
 	}
-	active_set = !active_set;
+	queued_set = !queued_set;
 }
 
-void setup_leds(void)
+void pwm_set(uint8_t channel, uint16_t value) {
+	/* FIXME: HAX, only works for 8 bit */
+	values[channel] = gamma8[value >> 8] << 8;
+}
+
+void leds_init(void)
 {
 	/* Set all our LED pins as GPIO outputs */
 	set_with_mask(&LPC_IOCON->PIO0_8, 0x3, 0x0);
@@ -132,6 +153,8 @@ void setup_leds(void)
 	set_with_mask(&LPC_IOCON->TRST_PIO0_14, 0x3, 0x1);
 	set_with_mask(&LPC_IOCON->SWDIO_PIO0_15, 0x3, 0x1);
 	LPC_GPIO->DIR[0] |= (0xFF << 8);
+
+	LPC_GPIO->MASK[0] = PIN_LED0 | PIN_LED1 | PIN_LED2 | PIN_LED3 | PIN_LED4 | PIN_LED5 | PIN_LED6 | PIN_LED7;
 }
 
 int main(void) {
@@ -140,23 +163,23 @@ int main(void) {
 	SysTick_Config(SystemCoreClock/1000);
 
 #ifdef DEBUG
-	LPC_GPIO->DIR[1] |= PIN_DBG;
-	LPC_GPIO->CLR[1] = PIN_DBG;
+	LPC_GPIO->DIR[DBG_PORT] |= DBG_PIN;
+	LPC_GPIO->CLR[DBG_PORT] = DBG_PIN;
 #endif
 
 	usb_init();
-	setup_leds();
+	leds_init();
 
 	delay_ms(100);
 
 	init_timer16(0);
 
 	uint16_t val = 0x0000;
-	set_pwm(val);
 
 	while(1) {
-		set_pwm(val);
+		pwm_flip();
 		val += 256;
+		pwm_set(0, val);
 		delay_ms(20);
 	}
 
