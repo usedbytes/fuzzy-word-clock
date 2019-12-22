@@ -203,7 +203,8 @@ void u32_to_str(uint32_t val, char *buf)
 	}
 }
 
-void WAKEUP0_Handler(void) {
+void WAKEUP0_Handler(void)
+{
 	uint32_t stat = LPC_GPIO_PIN_INT->IST;
 	if (stat & 1) {
 		if (LPC_GPIO_PIN_INT->ISEL & 1) {
@@ -237,7 +238,8 @@ void WAKEUP0_Handler(void) {
 	}
 }
 
-void TIMER_16_1_Handler(void) {
+void TIMER_16_1_Handler(void)
+{
 	uint32_t status = LPC_CT16B1->IR;
 	if (status & (1 << 3)) {
 		/* 30ms expired */
@@ -269,7 +271,20 @@ void TIMER_16_1_Handler(void) {
 	LPC_CT16B1->IR = status;
 }
 
-void button_init(void) {
+uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
+{
+	uint32_t diff = to - from;
+	uint32_t x = (pos << 16) / max;
+
+	if (pos >= max) {
+		return to;
+	}
+
+	return from + ((diff * x) >> 16);
+}
+
+void button_init(void)
+{
 	// Configure as falling edge interrupt
 	// On falling edge, start timer for 30ms
 	// After 30ms enable high-level interrupt, set timer with 3s timeout
@@ -297,7 +312,8 @@ void button_init(void) {
 	timer->PR = 65535;
 }
 
-int main(void) {
+int main(void)
+{
 	char buf[11] = "        \r\n";
 	SystemInit();
 	SystemCoreClockUpdate();
@@ -318,7 +334,32 @@ int main(void) {
 
 	uint16_t val = 0x0000;
 
+	uint32_t start, now, current = 0, next = 0xFFFF;
+
+	start = msTicks;
+	now = msTicks;
 	while(1) {
+		LPC_GPIO->CLR[DBG_PORT] = DBG_PIN1;
+		__WFI();
+		LPC_GPIO->SET[DBG_PORT] = DBG_PIN1;
+
+		if (msTicks == now) {
+			continue;
+		}
+
+		now = msTicks;
+		if ((now - start) > 5000) {
+			uint32_t tmp = next;
+			next = current;
+			current = tmp;
+			start = now;
+		}
+
+		val = lerp(current, next, now - start, 4096);
+		pwm_set(0, val);
+		pwm_flip(0, val);
+
+		/*
 		if (button == PRESSED) {
 			val += 128;
 			button = NONE;
@@ -326,9 +367,10 @@ int main(void) {
 			val = 0;
 			button = NONE;
 		}
+		val += 64;
 		pwm_set(0, val);
 		pwm_flip();
-		delay_ms(10);
+		*/
 	}
 
 	return 0;
