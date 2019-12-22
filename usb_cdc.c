@@ -29,6 +29,8 @@
 
 #define CDC_NO_CALL_MGMT_FUNC_DESC
 
+#define UNUSED(_x) (void)(_x)
+
 struct usb_ctx {
 	USBD_HANDLE_T core_hnd;
 	USBD_HANDLE_T cdc_hnd;
@@ -225,6 +227,8 @@ const USB_CORE_DESCS_T core_desc = {
 
 ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 {
+	UNUSED(hUsb);
+	UNUSED(data);
 	static bool done = false;
 
 	if ((event == USB_EVT_IN) && usb_ctx.tx_buf) {
@@ -240,7 +244,7 @@ ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 		       send = USB_MAX_PACKET0;
 
 		send = USBD_WriteEP(usb_ctx.core_hnd, USB_CDC_EP_BULK_IN,
-				    usb_ctx.tx_buf, send);
+				    (uint8_t *)(uintptr_t)usb_ctx.tx_buf, send);
 		usb_ctx.tx_len -= send;
 		usb_ctx.tx_buf += send;
 
@@ -262,6 +266,8 @@ ErrorCode_t CDC_BulkIN_Hdlr(USBD_HANDLE_T hUsb, void* data, uint32_t event)
 ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
                uint32_t event)
 {
+	UNUSED(data);
+	UNUSED(event);
 	static uint8_t buf[USB_MAX_PACKET0];
 	uint8_t *p = buf;
 	uint32_t len;
@@ -293,6 +299,7 @@ ErrorCode_t CDC_BulkOUT_Hdlr(USBD_HANDLE_T hUsb, void* data,
 
 ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 {
+	UNUSED(hCDC);
 	usb_ctx.dtr = (state & 0x1);
 
 	/* Terminate any ongoing transmission */
@@ -306,6 +313,8 @@ ErrorCode_t SetCtrlLineState(USBD_HANDLE_T hCDC, uint16_t state)
 
 ErrorCode_t SendBreak(USBD_HANDLE_T hCDC, uint16_t mstime)
 {
+	UNUSED(hCDC);
+	UNUSED(mstime);
 	return LPC_OK;
 }
 
@@ -360,7 +369,7 @@ ErrorCode_t usb_core_init(uint32_t mem_base, uint32_t *mem_size)
 	}
 	*mem_size = req_size;
 
-	ret = USBD_Init(&usb_ctx.core_hnd, &core_desc, &usb_param);
+	ret = USBD_Init(&usb_ctx.core_hnd, (USB_CORE_DESCS_T *)(uintptr_t)&core_desc, &usb_param);
 	if (ret)
 		return ret;
 
@@ -403,8 +412,8 @@ int usb_init()
 	/* Init CDC params */
 	cdc_param.SendBreak = SendBreak;
 	cdc_param.SetCtrlLineState = SetCtrlLineState;
-	cdc_param.cif_intf_desc = (uint8_t *)&desc_array.cif;
-	cdc_param.dif_intf_desc = (uint8_t *)&desc_array.dif;
+	cdc_param.cif_intf_desc = (uint8_t *)(uintptr_t)&desc_array.cif;
+	cdc_param.dif_intf_desc = (uint8_t *)(uintptr_t)&desc_array.dif;
 	cdc_param.mem_base = USB_MEM_BASE + mem_size;
 	cdc_param.mem_size = USBD_CDC_GetMemSize(&cdc_param);
 
