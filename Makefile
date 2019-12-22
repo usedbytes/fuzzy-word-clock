@@ -4,13 +4,6 @@ PROJECT = blink
 SOURCES = lpc11uxx/system_LPC11Uxx.c \
 		  startup.c \
 		  main.c \
-		  ds1302.c \
-		  hsvtorgb.c \
-		  lpd8806.c \
-		  lpd8806_display.c \
-		  pwm.c \
-		  spi.c \
-		  usart.c \
 		  usb_cdc.c \
 		  util.c
 
