@@ -441,7 +441,7 @@ int usb_init()
 	}
 
 	/* Enable IRQ */
-	NVIC_SetPriority(USB_IRQn, 0);
+	NVIC_SetPriority(USB_IRQn, 3);
 	NVIC_EnableIRQ(USB_IRQn);
 
 	/* Connect to the bus */
