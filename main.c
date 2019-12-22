@@ -16,13 +16,16 @@
 #define PIN_LED6 (1 <<  9)
 #define PIN_LED7 (1 <<  8)
 
-#define PIN_CH2 (1 << 20)
-#define PIN_CH1 (1 << 27)
-#define PIN_CH0 (1 << 26)
-
-#define DBG_HIGH() LPC_GPIO->SET[1] = PIN_CH0;
-#define DBG_LOW()  LPC_GPIO->CLR[1] = PIN_CH0;
-#define DBG_TOGGLE()  LPC_GPIO->NOT[1] = PIN_CH0;
+#ifdef DEBUG
+#define PIN_DBG (1 << 26)
+#define DBG_HIGH() LPC_GPIO->SET[1] = PIN_DBG
+#define DBG_LOW()  LPC_GPIO->CLR[1] = PIN_DBG
+#define DBG_TOGGLE()  LPC_GPIO->NOT[1] = PIN_DBG
+#else
+#define DBG_HIGH() {}
+#define DBG_LOW()  {}
+#define DBG_TOGGLE() {}
+#endif
 
 #define CH1_HIGH() LPC_GPIO->SET[1] = PIN_CH1;
 #define CH1_LOW()  LPC_GPIO->CLR[1] = PIN_CH1;
@@ -45,8 +48,6 @@ void TIMER_16_0_Handler(void) {
 	uint32_t status = timer->IR;
 
 	if (status & (1 << 3)) {
-		CH1_TOGGLE();
-
 		/*
 		 * Fun fact: You can't use reset-on-match mode and change the
 		 * match value in the interrupt handler.
@@ -134,19 +135,18 @@ void setup_leds(void)
 }
 
 int main(void) {
-	const char *p = (const char *)(0x000000c0);
-	uint32_t start, duration;
-
 	SystemInit();
 	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
 
-	LPC_GPIO->DIR[1] |= PIN_CH0 | PIN_CH1 | PIN_CH2;
+#ifdef DEBUG
+	LPC_GPIO->DIR[1] |= PIN_DBG;
+	LPC_GPIO->CLR[1] = PIN_DBG;
+#endif
 
 	usb_init();
 	setup_leds();
 
-	LPC_GPIO->CLR[1] = PIN_CH0 | PIN_CH1 | PIN_CH2;
 	delay_ms(100);
 
 	init_timer16(0);
@@ -162,4 +162,3 @@ int main(void) {
 
 	return 0;
 }
-
