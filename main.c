@@ -34,6 +34,13 @@
 #define PWM_RESOLUTION 10
 #define MIN_CYCLES_LOG2 2
 
+enum button_state {
+	NONE,
+	PRESSED,
+	HELD,
+};
+volatile enum button_state button = NONE;
+
 volatile uint32_t bitslices[2][PWM_RESOLUTION];
 volatile uint8_t in_use_set = 0;
 volatile uint8_t queued_set = 0;
@@ -183,6 +190,100 @@ void u32_to_str(uint32_t val, char *buf)
 	}
 }
 
+void WAKEUP0_Handler(void) {
+	uint32_t stat = LPC_GPIO_PIN_INT->IST;
+	if (stat & 1) {
+		if (LPC_GPIO_PIN_INT->ISEL & 1) {
+			LPC_CT16B1->TCR = 0x0;
+
+			LPC_GPIO_PIN_INT->ISEL &= ~(1 << 0);
+			LPC_GPIO_PIN_INT->FALL = (1 << 0);
+			LPC_GPIO_PIN_INT->CIENF = (1 << 0);
+			LPC_GPIO_PIN_INT->CIENR = (1 << 0);
+			LPC_GPIO_PIN_INT->IST = (1 << 0);
+
+			/* Reset to falling-edge triggered */
+			LPC_GPIO_PIN_INT->SIENF = (1 << 0);
+
+			if (LPC_CT16B1->TC < 700) {
+				button = PRESSED;
+			}
+
+			LPC_CT16B1->TC = 0x0;
+		} else {
+			LPC_GPIO_PIN_INT->CIENF = (1 << 0);
+			LPC_GPIO_PIN_INT->FALL = (1 << 0);
+			LPC_GPIO_PIN_INT->IST = (1 << 0);
+
+			/* Stop after 30ms */
+			LPC_CT16B1->MR3 = 21;
+			LPC_CT16B1->MCR = (1 << 9) | (1 << 11);
+			LPC_CT16B1->TC = 0x0;
+			LPC_CT16B1->TCR = 0x1;
+		}
+	}
+}
+
+void TIMER_16_1_Handler(void) {
+	uint32_t status = LPC_CT16B1->IR;
+	if (status & (1 << 3)) {
+		/* 30ms expired */
+		/* Select high level triggered */
+		LPC_GPIO_PIN_INT->FALL = (1 << 0);
+		LPC_GPIO_PIN_INT->ISEL = (1 << 0);
+		LPC_GPIO_PIN_INT->SIENF = (1 << 0);
+		LPC_GPIO_PIN_INT->SIENR = (1 << 0);
+
+		/* Stop after 3s */
+		LPC_CT16B1->MR2 = 2100;
+		LPC_CT16B1->MCR = (1 << 6) | (1 << 8);
+		LPC_CT16B1->TC = 0x0;
+		LPC_CT16B1->TCR = 0x1;
+	}
+	if (status & (1 << 2)) {
+		/* 3s expired */
+		LPC_GPIO_PIN_INT->ISEL &= ~(1 << 0);
+		LPC_GPIO_PIN_INT->FALL = (1 << 0);
+		LPC_GPIO_PIN_INT->CIENF = (1 << 0);
+		LPC_GPIO_PIN_INT->CIENR = (1 << 0);
+		LPC_GPIO_PIN_INT->IST = (1 << 0);
+
+		/* Reset to falling edge */
+		LPC_GPIO_PIN_INT->SIENF = (1 << 0);
+
+		button = HELD;
+	}
+	LPC_CT16B1->IR = status;
+}
+
+void button_init(void) {
+	// Configure as falling edge interrupt
+	// On falling edge, start timer for 30ms
+	// After 30ms enable high-level interrupt, set timer with 3s timeout
+	// On high level, stop timer - pressed
+	// One timer expire, stop timer - held
+
+	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 19);
+
+	NVIC_SetPriority(FLEX_INT0_IRQn, 3);
+	NVIC_EnableIRQ(FLEX_INT0_IRQn);
+
+	LPC_SYSCON->PINTSEL[0] = 17;
+	LPC_GPIO_PIN_INT->FALL = (1 << 0);
+	LPC_GPIO_PIN_INT->SIENF = (1 << 0);
+
+	LPC_CTxxBx_Type *timer = LPC_CT16B1;
+
+	NVIC_SetPriority(TIMER_16_1_IRQn, 3);
+	NVIC_EnableIRQ(TIMER_16_1_IRQn);
+
+	/* Turn on the clock - 48MHz */
+	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 8);
+
+	/* Ticks at ~732.4 Hz */
+	timer->PR = 65535;
+}
+
 int main(void) {
 	char buf[11] = "        \r\n";
 	SystemInit();
@@ -194,6 +295,7 @@ int main(void) {
 	LPC_GPIO->CLR[DBG_PORT] = DBG_PIN | DBG_PIN1;
 #endif
 
+	button_init();
 	usb_init();
 	leds_init();
 
@@ -204,30 +306,16 @@ int main(void) {
 	uint16_t val = 0x0000;
 
 	while(1) {
-		/*
-		if (val == 0 || val == 0x9000) {
-			pwm_set(0, 0x8000);
-			pwm_flip();
-			delay_ms(500);
-			val = 0x7000;
+		if (button == PRESSED) {
+			val += 128;
+			button = NONE;
+		} else if (button == HELD) {
+			val = 0;
+			button = NONE;
 		}
-		*/
-		val += 64;
 		pwm_set(0, val);
-		pwm_set(1, val + 0x300);
-		pwm_set(2, val + 0x470);
-		pwm_set(3, val + 0x1470);
-		pwm_set(4, val + 0x2470);
-		pwm_set(5, val + 0x9d70);
-		pwm_set(6, val + 0xa490);
-		pwm_set(7, val + 0xe470);
-		//pwm_set(1, val);
-		//pwm_set(2, val);
 		pwm_flip();
 		delay_ms(10);
-		u32_to_str(val, buf);
-		usb_usart_print(buf);
-		usb_usart_print("\r\n");
 	}
 
 	return 0;
