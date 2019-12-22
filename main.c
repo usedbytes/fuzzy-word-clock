@@ -137,8 +137,21 @@ void pwm_flip() {
 	int i;
 	uint16_t mask = 1 << (16 - PWM_RESOLUTION);
 
-	/* Only one flip in flight */
-	while (queued_set != in_use_set);
+	/*
+	 * If previous flip hasn't completed, we try to cancel it.
+	 * The timer routing will race with us, but all possibilities are
+	 * fine:
+	 *  - If the timer already swapped, then the condition is false and we're fine
+	 *  - If the timer swaps in between the check and the set, then queued_set
+	 *    simply doesn't change
+	 *  - If both the check and set happen before the timer swaps, then the
+	 *    previous flip is cancelled
+	 */
+	if (queued_set != in_use_set) {
+		NVIC_DisableIRQ(TIMER_16_0_IRQn);
+		queued_set = in_use_set;
+		NVIC_EnableIRQ(TIMER_16_0_IRQn);
+	}
 
 	volatile uint32_t *slice = bitslices[!queued_set];
 	for (i = 0; i < PWM_RESOLUTION; i++, mask <<= 1) {
