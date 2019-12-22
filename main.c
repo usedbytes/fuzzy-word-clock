@@ -21,14 +21,14 @@
 
 #define PWM_RESOLUTION 8
 
-#define MIN_CYCLES 4
+#define MIN_CYCLES_LOG2 2
 
 volatile uint32_t bitslices[2][PWM_RESOLUTION];
 volatile int active_set = 0;
 
 void TIMER_16_0_Handler(void) {
 	static int bit = 0;
-	static uint32_t mr = (1 << 10);
+	static uint32_t period = (1 << MIN_CYCLES_LOG2);
 	static volatile uint32_t *set = bitslices[0];
 
 	DBG_HIGH();
@@ -38,19 +38,28 @@ void TIMER_16_0_Handler(void) {
 	if (status & (1 << 3)) {
 		CH1_TOGGLE();
 
-		//while(timer->TC >= timer->MR3);
+		/*
+		 * Fun fact: You can't use reset-on-match mode and change the
+		 * match value in the interrupt handler.
+		 * The reset happens 1 prescaled clock cycle after the match
+		 * interrupt, which means if you change the match here, the
+		 * reset for the old match doesn't happen.
+		 * You can spin waiting for the reset before changing the MR,
+		 * but that blows my timing budget:
+		 *     while (timer->MR3 >= period - 1);
+		 * Instead, we clear the counter manually. It will introduce
+		 * some jitter, but ultimately is probably fine.
+		 */
 		timer->TC = 0;
-		timer->MR3 = mr - 1;
+		timer->MR3 = period - 1;
 
 		LPC_GPIO->MPIN[1] = set[bit++];
 
-		if (mr == 1 << (1 + (10 - PWM_RESOLUTION))) {
-			mr = (1 << 10);
-			bit = 0;
+		if (bit == PWM_RESOLUTION) {
 			set = bitslices[active_set];
-		} else {
-			mr >>= 1;
+			bit = 0;
 		}
+		period = 1 << (MIN_CYCLES_LOG2 + bit);
 	}
 	timer->IR = status;
 	DBG_LOW();
@@ -85,12 +94,11 @@ void set_pwm(uint16_t val16) {
 	val16 >>= (16 - PWM_RESOLUTION);
 
 	volatile uint32_t *slice = bitslices[!active_set];
-	for (i = 0; i < PWM_RESOLUTION; i++) {
-		if (val16 & (1 << (PWM_RESOLUTION - i - 1))) {
-			slice[i] = PIN_CH2;
-		} else {
-			slice[i] = 0;
-		}
+	for (i = 0; i < PWM_RESOLUTION; i++, val16 >>= 1) {
+		slice[i] = (
+			(val16 & 1) * PIN_CH2 |
+			0
+		);
 	}
 	active_set = !active_set;
 }
