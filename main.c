@@ -34,6 +34,144 @@
 #define PWM_RESOLUTION 10
 #define MIN_CYCLES_LOG2 2
 
+#define BREAKFAST   0
+#define LUNCH       1
+#define HOME        2
+#define DINNER      3
+#define BED         4
+#define NEARLY      5
+#define PAST        6
+#define ITS         7
+#define TIME        7
+#define LED(x)      (1 << (x))
+
+const uint8_t sequence[] = {
+	(0),
+	(LED(ITS) | LED(NEARLY) | LED(BREAKFAST) | LED(TIME)),
+	(LED(ITS) | 0           | LED(BREAKFAST) | LED(TIME)),
+	(LED(ITS) | LED(PAST)   | LED(BREAKFAST) | LED(TIME)),
+
+	(LED(ITS) | LED(NEARLY) | LED(LUNCH)     | LED(TIME)),
+	(LED(ITS) | 0           | LED(LUNCH)     | LED(TIME)),
+	(LED(ITS) | LED(PAST)   | LED(LUNCH)     | LED(TIME)),
+
+	(LED(ITS) | LED(NEARLY) | LED(HOME)      | LED(TIME)),
+	(LED(ITS) | 0           | LED(HOME)      | LED(TIME)),
+	(LED(ITS) | LED(PAST)   | LED(HOME)      | LED(TIME)),
+
+	(LED(ITS) | LED(NEARLY) | LED(DINNER)    | LED(TIME)),
+	(LED(ITS) | 0           | LED(DINNER)    | LED(TIME)),
+	(LED(ITS) | LED(PAST)   | LED(DINNER)    | LED(TIME)),
+
+	(LED(ITS) | LED(NEARLY) | LED(BED)       | LED(TIME)),
+	(LED(ITS) | 0           | LED(BED)       | LED(TIME)),
+	(LED(ITS) | LED(PAST)   | LED(BED)       | LED(TIME)),
+
+	(0),
+};
+
+#define TIME(h, m) ((h << 8) | (m))
+const uint16_t times[] = {
+	[BREAKFAST] = TIME(8, 0),
+	[LUNCH]     = TIME(12, 20),
+	[HOME]      = TIME(17, 30),
+	[DINNER]    = TIME(19, 0),
+	[BED]       = TIME(22, 0),
+};
+
+struct timeband {
+	uint16_t start;
+	uint16_t end;
+	uint8_t sentence;
+};
+
+int n_timebands = 0;
+struct timeband timebands[20];
+
+uint8_t hours(uint16_t time)
+{
+	return time >> 8;
+}
+
+uint8_t mins(uint16_t time)
+{
+	return time & 0xFF;
+}
+
+uint16_t time_add(uint16_t a, uint16_t b)
+{
+	int h = hours(a) + hours(b);
+	int m = mins(a) + mins(b);
+
+	while (m >= 60) {
+		h++
+		m -= 60;
+	}
+
+	while (h >= 24) {
+		h -= 24;
+	}
+
+	return TIME(h, m);
+}
+
+uint16_t time_sub(uint16_t a, uint16_t b)
+{
+	int h = hours(a) - hours(b);
+	int m = mins(a) - mins(b);
+
+	while (m < 0) {
+		h--;
+		m += 60;
+	}
+
+	while (h < 0) {
+		h += 24;
+	}
+	while (h >= 24) {
+		h -= 24;
+	}
+
+	return TIME(h, m);
+}
+
+void build_timebands()
+{
+	timebands[n_timebands] = (struct timeband){
+		.start = TIME(0, 0),
+		.sentence = 0,
+	};
+	n_timebands++;
+
+	for (i = 0; i < N_COURSES; i++) {
+		uint16_t tmp = time_sub(times[i], TIME(0, 15));
+		timebands[n_timebands] = (struct timeband){
+			.start = tmp,
+			.sentence = LED(ITS) | LED(NEARLY) | LED(i) | LED(TIME),
+		};
+		n_timebands++;
+
+		timebands[n_timebands] = (struct timeband){
+			.start = times[i],
+			.sentence = LED(ITS) | 0 | LED(i) | LED(TIME),
+		};
+		n_timebands++;
+
+		tmp = time_add(times[i], TIME(0, 15));
+		timebands[n_timebands] = (struct timeband){
+			.start = tmp,
+			.sentence = LED(ITS) | LED(PAST) | LED(i) | LED(TIME),
+		};
+		n_timebands++;
+	}
+
+	timebands[n_timebands] = (struct timeband){
+		.start = time_add(times[BED], TIME(1, 0)),
+		.sentence = 0,
+	};
+	n_timebands++;
+}
+
 enum button_state {
 	NONE,
 	PRESSED,
@@ -76,7 +214,7 @@ void TIMER_16_0_Handler(void) {
 		bit += dir;
 
 #ifdef DEBUG
-		LPC_GPIO->NOT[DBG_PORT] = DBG_PIN1;
+		//LPC_GPIO->NOT[DBG_PORT] = DBG_PIN1;
 #endif
 		if (dir > 0 && bit == PWM_RESOLUTION) {
 			in_use_set = queued_set;
@@ -332,45 +470,72 @@ int main(void)
 
 	init_timer16(0);
 
+	int i, idx = 0;
+
 	uint16_t val = 0x0000;
 
-	uint32_t start, now, current = 0, next = 0xFFFF;
+	uint32_t start, now, current, next;
+	uint32_t rise = 0x0000;
+	uint32_t fall = 0;
 
-	start = msTicks;
-	now = msTicks;
+	start = msTicks - 5000;
 	while(1) {
-		LPC_GPIO->CLR[DBG_PORT] = DBG_PIN1;
-		__WFI();
-		LPC_GPIO->SET[DBG_PORT] = DBG_PIN1;
 
-		if (msTicks == now) {
-			continue;
+		/*
+		time = get_time();
+		for (i = 0; i < n_timebands; i++) {
+			if (time >= timebands[i].start) {
+				band = i;
+			} else {
+				break;
+			}
+		}
+
+		display(band[i]);
+
+		i = i + 1;
+		if (i >= n_timebands) {
+			i = 0;
+			day++;
+			if (day > 7) {
+				day = 0;
+			}
+		}
+		sleep_until(day, band[i].start);
+		*/
+
+
+		if (fall == 0) {
+			while (msTicks < start + 5000) {
+				__WFI();
+			}
+			current = sequence[idx];
+			idx++;
+			if (idx == (sizeof(sequence) / sizeof(sequence[0]))) {
+				idx = 0;
+			}
+			next = sequence[idx];
+			start = msTicks;
 		}
 
 		now = msTicks;
-		if ((now - start) > 5000) {
-			uint32_t tmp = next;
-			next = current;
-			current = tmp;
-			start = now;
-		}
+		rise = lerp(0, 0xffff, now - start, 4096);
+		fall = lerp(0xffff, 0x0, now - start, 4096);
 
-		val = lerp(current, next, now - start, 4096);
-		pwm_set(0, val);
-		pwm_flip(0, val);
+		uint32_t in = next & ~current;
+		uint32_t out = current & ~next;
 
-		/*
-		if (button == PRESSED) {
-			val += 128;
-			button = NONE;
-		} else if (button == HELD) {
-			val = 0;
-			button = NONE;
+		for (i = 0; i < 8; i++) {
+			if (in & (1 << i)) {
+				pwm_set(i, rise);
+			}
+			if (out & (1 << i)) {
+				pwm_set(i, fall);
+			}
 		}
-		val += 64;
-		pwm_set(0, val);
 		pwm_flip();
-		*/
+
+		__WFI();
 	}
 
 	return 0;
