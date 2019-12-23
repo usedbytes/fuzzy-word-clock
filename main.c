@@ -43,6 +43,18 @@
 #define PAST        6
 #define ITS         7
 #define TIME        7
+
+const uint8_t channel_map[] = {
+	[BREAKFAST] =  2,
+	[LUNCH]     =  5,
+	[HOME]      =  7,
+	[DINNER]    =  3,
+	[BED]       =  6,
+	[NEARLY]    =  0,
+	[PAST]      =  4,
+	[ITS]       =  1,
+};
+
 #define LED(x)      (1 << (x))
 
 const uint8_t sequence[] = {
@@ -527,10 +539,10 @@ int main(void)
 
 		for (i = 0; i < 8; i++) {
 			if (in & (1 << i)) {
-				pwm_set(i, rise);
+				pwm_set(channel_map[i], rise);
 			}
 			if (out & (1 << i)) {
-				pwm_set(i, fall);
+				pwm_set(channel_map[i], fall);
 			}
 		}
 		pwm_flip();
