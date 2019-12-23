@@ -41,8 +41,7 @@
 #define BED         4
 #define NEARLY      5
 #define PAST        6
-#define ITS         7
-#define TIME        7
+#define ITS_TIME    7
 #define BIT(x)      (1 << (x))
 
 const uint8_t channel_map[] = {
@@ -53,30 +52,30 @@ const uint8_t channel_map[] = {
 	[BED]       =  6,
 	[NEARLY]    =  0,
 	[PAST]      =  4,
-	[ITS]       =  1,
+	[ITS_TIME]  =  1,
 };
 
 const uint8_t sequence[] = {
 	(0),
-	(BIT(ITS) | BIT(NEARLY) | BIT(BREAKFAST) | BIT(TIME)),
-	(BIT(ITS) | 0           | BIT(BREAKFAST) | BIT(TIME)),
-	(BIT(ITS) | BIT(PAST)   | BIT(BREAKFAST) | BIT(TIME)),
+	(BIT(ITS_TIME) | BIT(NEARLY) | BIT(BREAKFAST)),
+	(BIT(ITS_TIME) | 0           | BIT(BREAKFAST)),
+	(BIT(ITS_TIME) | BIT(PAST)   | BIT(BREAKFAST)),
 
-	(BIT(ITS) | BIT(NEARLY) | BIT(LUNCH)     | BIT(TIME)),
-	(BIT(ITS) | 0           | BIT(LUNCH)     | BIT(TIME)),
-	(BIT(ITS) | BIT(PAST)   | BIT(LUNCH)     | BIT(TIME)),
+	(BIT(ITS_TIME) | BIT(NEARLY) | BIT(LUNCH)    ),
+	(BIT(ITS_TIME) | 0           | BIT(LUNCH)    ),
+	(BIT(ITS_TIME) | BIT(PAST)   | BIT(LUNCH)    ),
 
-	(BIT(ITS) | BIT(NEARLY) | BIT(HOME)      | BIT(TIME)),
-	(BIT(ITS) | 0           | BIT(HOME)      | BIT(TIME)),
-	(BIT(ITS) | BIT(PAST)   | BIT(HOME)      | BIT(TIME)),
+	(BIT(ITS_TIME) | BIT(NEARLY) | BIT(HOME)     ),
+	(BIT(ITS_TIME) | 0           | BIT(HOME)     ),
+	(BIT(ITS_TIME) | BIT(PAST)   | BIT(HOME)     ),
 
-	(BIT(ITS) | BIT(NEARLY) | BIT(DINNER)    | BIT(TIME)),
-	(BIT(ITS) | 0           | BIT(DINNER)    | BIT(TIME)),
-	(BIT(ITS) | BIT(PAST)   | BIT(DINNER)    | BIT(TIME)),
+	(BIT(ITS_TIME) | BIT(NEARLY) | BIT(DINNER)   ),
+	(BIT(ITS_TIME) | 0           | BIT(DINNER)   ),
+	(BIT(ITS_TIME) | BIT(PAST)   | BIT(DINNER)   ),
 
-	(BIT(ITS) | BIT(NEARLY) | BIT(BED)       | BIT(TIME)),
-	(BIT(ITS) | 0           | BIT(BED)       | BIT(TIME)),
-	(BIT(ITS) | BIT(PAST)   | BIT(BED)       | BIT(TIME)),
+	(BIT(ITS_TIME) | BIT(NEARLY) | BIT(BED)      ),
+	(BIT(ITS_TIME) | 0           | BIT(BED)      ),
+	(BIT(ITS_TIME) | BIT(PAST)   | BIT(BED)      ),
 
 	(0),
 };
