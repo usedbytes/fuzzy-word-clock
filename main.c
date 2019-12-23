@@ -43,6 +43,7 @@
 #define PAST        6
 #define ITS         7
 #define TIME        7
+#define BIT(x)      (1 << (x))
 
 const uint8_t channel_map[] = {
 	[BREAKFAST] =  2,
@@ -55,29 +56,27 @@ const uint8_t channel_map[] = {
 	[ITS]       =  1,
 };
 
-#define LED(x)      (1 << (x))
-
 const uint8_t sequence[] = {
 	(0),
-	(LED(ITS) | LED(NEARLY) | LED(BREAKFAST) | LED(TIME)),
-	(LED(ITS) | 0           | LED(BREAKFAST) | LED(TIME)),
-	(LED(ITS) | LED(PAST)   | LED(BREAKFAST) | LED(TIME)),
+	(BIT(ITS) | BIT(NEARLY) | BIT(BREAKFAST) | BIT(TIME)),
+	(BIT(ITS) | 0           | BIT(BREAKFAST) | BIT(TIME)),
+	(BIT(ITS) | BIT(PAST)   | BIT(BREAKFAST) | BIT(TIME)),
 
-	(LED(ITS) | LED(NEARLY) | LED(LUNCH)     | LED(TIME)),
-	(LED(ITS) | 0           | LED(LUNCH)     | LED(TIME)),
-	(LED(ITS) | LED(PAST)   | LED(LUNCH)     | LED(TIME)),
+	(BIT(ITS) | BIT(NEARLY) | BIT(LUNCH)     | BIT(TIME)),
+	(BIT(ITS) | 0           | BIT(LUNCH)     | BIT(TIME)),
+	(BIT(ITS) | BIT(PAST)   | BIT(LUNCH)     | BIT(TIME)),
 
-	(LED(ITS) | LED(NEARLY) | LED(HOME)      | LED(TIME)),
-	(LED(ITS) | 0           | LED(HOME)      | LED(TIME)),
-	(LED(ITS) | LED(PAST)   | LED(HOME)      | LED(TIME)),
+	(BIT(ITS) | BIT(NEARLY) | BIT(HOME)      | BIT(TIME)),
+	(BIT(ITS) | 0           | BIT(HOME)      | BIT(TIME)),
+	(BIT(ITS) | BIT(PAST)   | BIT(HOME)      | BIT(TIME)),
 
-	(LED(ITS) | LED(NEARLY) | LED(DINNER)    | LED(TIME)),
-	(LED(ITS) | 0           | LED(DINNER)    | LED(TIME)),
-	(LED(ITS) | LED(PAST)   | LED(DINNER)    | LED(TIME)),
+	(BIT(ITS) | BIT(NEARLY) | BIT(DINNER)    | BIT(TIME)),
+	(BIT(ITS) | 0           | BIT(DINNER)    | BIT(TIME)),
+	(BIT(ITS) | BIT(PAST)   | BIT(DINNER)    | BIT(TIME)),
 
-	(LED(ITS) | LED(NEARLY) | LED(BED)       | LED(TIME)),
-	(LED(ITS) | 0           | LED(BED)       | LED(TIME)),
-	(LED(ITS) | LED(PAST)   | LED(BED)       | LED(TIME)),
+	(BIT(ITS) | BIT(NEARLY) | BIT(BED)       | BIT(TIME)),
+	(BIT(ITS) | 0           | BIT(BED)       | BIT(TIME)),
+	(BIT(ITS) | BIT(PAST)   | BIT(BED)       | BIT(TIME)),
 
 	(0),
 };
@@ -159,20 +158,20 @@ void build_timebands()
 		uint16_t tmp = time_sub(times[i], TIME(0, 15));
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
-			.sentence = LED(ITS) | LED(NEARLY) | LED(i) | LED(TIME),
+			.sentence = BIT(ITS) | BIT(NEARLY) | BIT(i) | BIT(TIME),
 		};
 		n_timebands++;
 
 		timebands[n_timebands] = (struct timeband){
 			.start = times[i],
-			.sentence = LED(ITS) | 0 | LED(i) | LED(TIME),
+			.sentence = BIT(ITS) | 0 | BIT(i) | BIT(TIME),
 		};
 		n_timebands++;
 
 		tmp = time_add(times[i], TIME(0, 15));
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
-			.sentence = LED(ITS) | LED(PAST) | LED(i) | LED(TIME),
+			.sentence = BIT(ITS) | BIT(PAST) | BIT(i) | BIT(TIME),
 		};
 		n_timebands++;
 	}
