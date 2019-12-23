@@ -4,6 +4,7 @@ PROJECT = blink
 SOURCES = lpc11uxx/system_LPC11Uxx.c \
 		  startup.c \
 		  main.c \
+		  ds1302.c \
 		  usb_cdc.c \
 		  util.c
 
@@ -13,7 +14,7 @@ LINKER_SCRIPT = lpc11u24.dld
 
 #########################################################################
 
-ISP_DIR ?= "/media/removable/CRP DISABLD"
+ISP_DIR ?= "/var/run/media/kernelcode/CRP DISABLD"
 
 #########################################################################
 
@@ -79,7 +80,7 @@ stats: $(PROJECT).elf
 
 .PHONY: isp
 isp: $(PROJECT)_checksum.bin
-	dd if=$< conv=nocreat,notrunc of='$(ISP_DIR)/firmware.bin'
+	dd if=$< conv=nocreat,notrunc of='/var/run/media/kernelcode/CRP DISABLD/firmware.bin'
 
 .PHONY: clean
 clean:

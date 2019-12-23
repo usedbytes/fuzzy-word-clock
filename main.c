@@ -44,6 +44,8 @@
 #define ITS_TIME    7
 #define BIT(x)      (1 << (x))
 
+#define N_COURSES 5
+
 const uint8_t channel_map[] = {
 	[BREAKFAST] =  2,
 	[LUNCH]     =  5,
@@ -114,7 +116,7 @@ uint16_t time_add(uint16_t a, uint16_t b)
 	int m = mins(a) + mins(b);
 
 	while (m >= 60) {
-		h++
+		h++;
 		m -= 60;
 	}
 
@@ -147,6 +149,7 @@ uint16_t time_sub(uint16_t a, uint16_t b)
 
 void build_timebands()
 {
+	int i;
 	timebands[n_timebands] = (struct timeband){
 		.start = TIME(0, 0),
 		.sentence = 0,
@@ -157,20 +160,20 @@ void build_timebands()
 		uint16_t tmp = time_sub(times[i], TIME(0, 15));
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
-			.sentence = BIT(ITS) | BIT(NEARLY) | BIT(i) | BIT(TIME),
+			.sentence = BIT(ITS_TIME) | BIT(NEARLY) | BIT(i),
 		};
 		n_timebands++;
 
 		timebands[n_timebands] = (struct timeband){
 			.start = times[i],
-			.sentence = BIT(ITS) | 0 | BIT(i) | BIT(TIME),
+			.sentence = BIT(ITS_TIME) | 0 | BIT(i),
 		};
 		n_timebands++;
 
 		tmp = time_add(times[i], TIME(0, 15));
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
-			.sentence = BIT(ITS) | BIT(PAST) | BIT(i) | BIT(TIME),
+			.sentence = BIT(ITS_TIME) | BIT(PAST) | BIT(i),
 		};
 		n_timebands++;
 	}
@@ -254,8 +257,8 @@ static void init_timer16()
 	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 7);
 
 	/* Conservative */
-	timer->PR = 80;
-	//timer->PR = 60;
+	//timer->PR = 80;
+	timer->PR = 60;
 
 	/* Use MR3 as overflow interupt */
 	timer->MR3 = 0;
@@ -431,6 +434,44 @@ uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
 	return from + ((diff * x) >> 16);
 }
 
+void display(uint8_t sentence)
+{
+	int i;
+	static uint8_t current = 0;
+
+
+	uint8_t in = sentence & ~current;
+	uint8_t out = current & ~sentence;
+
+	if (current == sentence) {
+		return;
+	}
+
+	msTicks = 0;
+
+	uint16_t rise = 0, fall = 0;
+	while (rise < 0xFFFF) {
+		uint32_t now = msTicks;
+
+		rise = lerp(0, 0xffff, now, 2048);
+		fall = lerp(0xffff, 0x0, now, 2048);
+
+		for (i = 0; i < 8; i++) {
+			if (in & (1 << i)) {
+				pwm_set(channel_map[i], rise);
+			}
+			if (out & (1 << i)) {
+				pwm_set(channel_map[i], fall);
+			}
+		}
+		pwm_flip();
+
+		delay_ms(10);
+	}
+
+	current = sentence;
+}
+
 void button_init(void)
 {
 	// Configure as falling edge interrupt
@@ -460,6 +501,14 @@ void button_init(void)
 	timer->PR = 65535;
 }
 
+uint16_t get_time()
+{
+	static uint16_t time = TIME(0, 0);
+
+	time = time_add(time, TIME(0, 10));
+	return time;
+}
+
 int main(void)
 {
 	char buf[11] = "        \r\n";
@@ -472,6 +521,7 @@ int main(void)
 	LPC_GPIO->CLR[DBG_PORT] = DBG_PIN | DBG_PIN1;
 #endif
 
+	build_timebands();
 	button_init();
 	usb_init();
 	leds_init();
@@ -480,19 +530,14 @@ int main(void)
 
 	init_timer16(0);
 
-	int i, idx = 0;
+	int i = 0;
 
-	uint16_t val = 0x0000;
+	uint8_t day;
 
-	uint32_t start, now, current, next;
-	uint32_t rise = 0x0000;
-	uint32_t fall = 0;
-
-	start = msTicks - 5000;
 	while(1) {
 
-		/*
-		time = get_time();
+		int band = 0;
+		uint16_t time = get_time();
 		for (i = 0; i < n_timebands; i++) {
 			if (time >= timebands[i].start) {
 				band = i;
@@ -501,8 +546,14 @@ int main(void)
 			}
 		}
 
-		display(band[i]);
+		display(timebands[band].sentence);
 
+		u32_to_str(time, buf);
+		usb_usart_print(buf);
+
+		delay_ms(160);
+
+		/*
 		i = i + 1;
 		if (i >= n_timebands) {
 			i = 0;
@@ -511,41 +562,10 @@ int main(void)
 				day = 0;
 			}
 		}
-		sleep_until(day, band[i].start);
+		//sleep_until(day, band[i].start);
+
 		*/
 
-
-		if (fall == 0) {
-			while (msTicks < start + 5000) {
-				__WFI();
-			}
-			current = sequence[idx];
-			idx++;
-			if (idx == (sizeof(sequence) / sizeof(sequence[0]))) {
-				idx = 0;
-			}
-			next = sequence[idx];
-			start = msTicks;
-		}
-
-		now = msTicks;
-		rise = lerp(0, 0xffff, now - start, 4096);
-		fall = lerp(0xffff, 0x0, now - start, 4096);
-
-		uint32_t in = next & ~current;
-		uint32_t out = current & ~next;
-
-		for (i = 0; i < 8; i++) {
-			if (in & (1 << i)) {
-				pwm_set(channel_map[i], rise);
-			}
-			if (out & (1 << i)) {
-				pwm_set(channel_map[i], fall);
-			}
-		}
-		pwm_flip();
-
-		__WFI();
 	}
 
 	return 0;
