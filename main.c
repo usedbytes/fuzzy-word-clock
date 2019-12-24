@@ -4,6 +4,7 @@
 
 #include "LPC11Uxx.h"
 
+#include "ds1302.h"
 #include "usb_cdc.h"
 #include "util.h"
 
@@ -16,7 +17,7 @@
 #define PIN_LED6 (1 <<  9)
 #define PIN_LED7 (1 <<  8)
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 #define DBG_PORT (0)
 #define DBG_PIN  (1 << 19)
@@ -509,6 +510,22 @@ uint16_t get_time()
 	return time;
 }
 
+void sleep_until(uint8_t day, uint16_t time)
+{
+	struct rtc_date date;
+	while (1) {
+		rtc_read_date(&date);
+		if (date.day == day) {
+			if (TIME(date.hours, date.minutes) >= time) {
+				return;
+			}
+		}
+
+		msTicks = 0;
+		while (msTicks < 1000 * 60);
+	}
+}
+
 int main(void)
 {
 	char buf[11] = "        \r\n";
@@ -523,6 +540,7 @@ int main(void)
 
 	build_timebands();
 	button_init();
+	rtc_init();
 	usb_init();
 	leds_init();
 
@@ -532,12 +550,23 @@ int main(void)
 
 	int i = 0;
 
+	struct rtc_date date = {
+		.seconds = 0,
+		.minutes = 0,
+		.hours = 10,
+		.date = 24,
+		.month = 12,
+		.day = 1,
+		.year = 19,
+	};
+	//rtc_write_date(&date);
+	uint16_t time;
 	uint8_t day;
-
 	while(1) {
+		rtc_read_date(&date);
+		time = TIME(date.hours, date.minutes);
 
 		int band = 0;
-		uint16_t time = get_time();
 		for (i = 0; i < n_timebands; i++) {
 			if (time >= timebands[i].start) {
 				band = i;
@@ -548,24 +577,21 @@ int main(void)
 
 		display(timebands[band].sentence);
 
-		u32_to_str(time, buf);
+		u32_to_str((*(uint32_t*)&date), buf);
 		usb_usart_print(buf);
 
 		delay_ms(160);
 
-		/*
+		day = date.day;
 		i = i + 1;
 		if (i >= n_timebands) {
 			i = 0;
 			day++;
 			if (day > 7) {
-				day = 0;
+				day = 1;
 			}
 		}
-		//sleep_until(day, band[i].start);
-
-		*/
-
+		sleep_until(day, timebands[i].start);
 	}
 
 	return 0;

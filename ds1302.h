@@ -30,7 +30,7 @@ struct rtc_date {
 	uint8_t day;
 	uint8_t year;
 	uint8_t write_protect;
-};
+} __attribute__ ((aligned(4)));
 
 /* Initialise the RTC port */
 void rtc_init(void);
