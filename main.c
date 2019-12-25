@@ -16,6 +16,7 @@
 #define PIN_LED5 (1 << 10)
 #define PIN_LED6 (1 <<  9)
 #define PIN_LED7 (1 <<  8)
+#define N_CHANNELS  8
 
 //#define DEBUG
 #ifdef DEBUG
@@ -423,6 +424,32 @@ void TIMER_16_1_Handler(void)
 	LPC_CT16B1->IR = status;
 }
 
+static void init_timer32()
+{
+	LPC_CTxxBx_Type *timer = LPC_CT32B0;
+
+	NVIC_SetPriority(TIMER_32_0_IRQn, 3);
+	NVIC_EnableIRQ(TIMER_32_0_IRQn);
+
+	/* Turn on the clock - 48MHz */
+	LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 9);
+
+	/* 2kHz */
+	timer->PR = 24000;
+
+	/* 10 ms overflow */
+	timer->MR3 = 20;
+	timer->MCR = (1 << 9) | (1 << 10);
+	timer->TCR = 0x1;
+}
+
+const uint32_t anim_length = 2048;
+volatile uint32_t anim_start;
+volatile uint8_t in;
+volatile uint8_t out;
+uint32_t state[N_CHANNELS];
+uint32_t start[N_CHANNELS];
+
 uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
 {
 	uint32_t diff = to - from;
@@ -435,40 +462,47 @@ uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
 	return from + ((diff * x) >> 16);
 }
 
+void TIMER_32_0_Handler(void)
+{
+	uint32_t status = LPC_CT32B0->IR;
+	if (status & (1 << 3)) {
+		uint32_t tmp = msTicks - anim_start;
+
+		uint32_t i, val = 0;
+		for (i = 0; i < N_CHANNELS; i++) {
+			if (in & (1 << i)) {
+				val = lerp(start[i], 0xffff, tmp, anim_length);
+			} else if (out & (1 << i)) {
+				val = lerp(start[i], 0, tmp, anim_length);
+			} else {
+				val = state[i];
+			}
+			state[i] = val;
+			pwm_set(channel_map[i], val);
+		}
+
+		pwm_flip();
+	}
+	LPC_CT32B0->IR = status;
+}
+
 void display(uint8_t sentence)
 {
 	int i;
 	static uint8_t current = 0;
 
-
-	uint8_t in = sentence & ~current;
-	uint8_t out = current & ~sentence;
-
 	if (current == sentence) {
 		return;
 	}
 
-	msTicks = 0;
-
-	uint16_t rise = 0, fall = 0;
-	while (rise < 0xFFFF) {
-		uint32_t now = msTicks;
-
-		rise = lerp(0, 0xffff, now, 2048);
-		fall = lerp(0xffff, 0x0, now, 2048);
-
-		for (i = 0; i < 8; i++) {
-			if (in & (1 << i)) {
-				pwm_set(channel_map[i], rise);
-			}
-			if (out & (1 << i)) {
-				pwm_set(channel_map[i], fall);
-			}
-		}
-		pwm_flip();
-
-		delay_ms(10);
+	NVIC_DisableIRQ(TIMER_32_0_IRQn);
+	for (i = 0; i < N_CHANNELS; i++) {
+		start[i] = state[i];
 	}
+	anim_start = msTicks;
+	in = sentence & ~current;
+	out = current & ~sentence;
+	NVIC_EnableIRQ(TIMER_32_0_IRQn);
 
 	current = sentence;
 }
@@ -504,6 +538,7 @@ void button_init(void)
 
 void sleep_until(uint8_t day, uint16_t time)
 {
+	uint32_t sleep_start;
 	struct rtc_date date;
 	while (1) {
 		rtc_read_date(&date);
@@ -513,8 +548,8 @@ void sleep_until(uint8_t day, uint16_t time)
 			}
 		}
 
-		msTicks = 0;
-		while (msTicks < 1000 * 60);
+		sleep_start = msTicks;
+		while ((msTicks - sleep_start) < (1000 * 60));
 	}
 }
 
@@ -535,6 +570,7 @@ int main(void)
 	rtc_init();
 	usb_init();
 	leds_init();
+	init_timer32();
 
 	delay_ms(100);
 
