@@ -553,6 +553,199 @@ void sleep_until(uint8_t day, uint16_t time)
 	}
 }
 
+int parse_time(char *buf, uint16_t *time)
+{
+	char *saveptr;
+	char *tok = strtok_r(buf, ":", &saveptr);
+	uint8_t h, m;
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	h = ((tok[0] - '0') << 4) | (time[1] - '0');
+
+	tok = strtok_r(NULL, "\r\n", &saveptr);
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	m = ((tok[0] - '0') << 4) | (time[1] - '0');
+
+	*time = TIME(h, m);
+
+	return 0;
+}
+
+/* 2019-12-25-12:25:00 */
+int parse_datetime(char *buf, struct rtc_date *date)
+{
+	char *saveptr;
+	char *tok = strtok_r(buf, "-", &saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 4) {
+		return -1;
+	}
+	date->year = ((tok[2] - '0') << 4) | (tok[3] - '0');
+
+	tok = strtok_r(NULL, "-", &saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	date->month = ((tok[0] - '0') << 4) | (tok[1] - '0');
+
+	tok = strtok_r(NULL, "-", &saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	date->date = ((tok[0] - '0') << 4) | (tok[1] - '0');
+
+	tok = strtok_r(NULL, ":", &saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	date->hours = ((tok[0] - '0') << 4) | (tok[1] - '0');
+
+	tok = strtok_r(NULL, ":", &saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	date->minutes = ((tok[0] - '0') << 4) | (tok[1] - '0');
+
+	tok = strtok_r(NULL, ":", &saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 2) {
+		return -1;
+	}
+	date->seconds = ((tok[0] - '0') << 4) | (tok[1] - '0');
+
+	return 0;
+}
+
+int handle_set_command(char **saveptr)
+{
+	int ret = 0;
+	char *tok = strtok_r(NULL, " ", saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+
+	if (!strcmp(tok, "TIME")) {
+		struct rtc_date date = { 0 };
+		tok = strtok_r(NULL, "\r", saveptr);
+		if (tok == NULL) {
+			return -1;
+		}
+
+		ret = parse_datetime(tok, &date);
+		if (ret) {
+			return ret;
+		}
+
+		usb_usart_print("\r\n");
+		usb_usart_print(rtc_date_to_str(&date));
+		rtc_write_date(&date);
+		usb_usart_print("\r");
+	}
+
+	if (!ret) {
+		usb_usart_print("\nOK\r\n");
+	}
+
+	return ret;
+}
+
+int handle_get_command(char **saveptr)
+{
+	int ret = 0;
+	char *tok = strtok_r(NULL, "\r", saveptr);
+	if (tok == NULL) {
+		return -1;
+	}
+
+	if (!strcmp(tok, "TIME")) {
+		struct rtc_date date = { 0 };
+		rtc_read_date(&date);
+
+		usb_usart_print("\r\n");
+		usb_usart_print(rtc_date_to_str(&date));
+		usb_usart_print("\r\n");
+	}
+
+	return ret;
+}
+
+int handle_command(char *buf)
+{
+	char *saveptr;
+	char *tok = strtok_r(buf, " \r", &saveptr);
+
+	if (tok == NULL) {
+		return -1;
+	}
+
+	if (!strcmp(tok, "RESET")) {
+		usb_usart_print("\nRESET\r\n");
+		NVIC_SystemReset();
+		return 0;
+	} else if (!strcmp(tok, "SET")) {
+		return handle_set_command(&saveptr);
+	} else if (!strcmp(tok, "GET")) {
+		return handle_get_command(&saveptr);
+	}
+
+	return -1;
+}
+
+void handle_usart()
+{
+	static char buf[32];
+	static unsigned int len = 0;
+	int ret = 0;
+
+	if (!usb_usart_dtr()) {
+		return;
+	}
+
+	while ((len < sizeof(buf)) && (buf[len - 1] != '\r')) {
+		ret = usb_usart_recv(&buf[len], 1, 0);
+		if (!ret) {
+			break;
+		}
+		usb_usart_send(&buf[len], 1);
+		len += ret;
+	}
+
+	if (buf[len - 1] == '\r') {
+		ret = handle_command(buf);
+		len = 0;
+	} else if (len == sizeof(buf)) {
+		usb_usart_flush_rx();
+		len = 0;
+		ret = -1;
+	}
+
+	if (ret) {
+		usb_usart_print("\nERR\r\n");
+	}
+}
+
 int main(void)
 {
 	char buf[11] = "        \r\n";
@@ -601,11 +794,11 @@ int main(void)
 			}
 		}
 
-		u32_to_str((*(uint32_t*)&date), buf);
-		usb_usart_print(buf);
-
 		display(timebands[band].sentence);
 
+		handle_usart();
+
+		/*
 		day = date.day;
 		band = band + 1;
 		if (band >= n_timebands) {
@@ -616,6 +809,7 @@ int main(void)
 			}
 		}
 		sleep_until(day, timebands[band].start);
+		*/
 	}
 
 	return 0;

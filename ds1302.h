@@ -46,3 +46,5 @@ void rtc_poke(uint8_t addr, uint8_t data);
 
 uint8_t dec_to_bcd(uint8_t dec);
 uint8_t bcd_to_dec(uint8_t bcd);
+
+char *rtc_date_to_str(struct rtc_date *date);

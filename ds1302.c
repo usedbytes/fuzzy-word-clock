@@ -171,3 +171,44 @@ void rtc_poke(uint8_t addr, uint8_t data)
 	rtc_cmd(cmd);
 	rtc_write(&data, 1);
 }
+
+char *rtc_date_to_str(struct rtc_date *date)
+{
+	static char buf[20];
+	uint8_t tmp;
+	int idx = 0;
+
+	buf[idx++] = '2';
+	buf[idx++] = '0';
+	tmp = date->year;
+	buf[idx++] = (tmp >> 4) + '0';
+	buf[idx++] = (tmp & 0xf) + '0';
+	buf[idx++] = '-';
+
+	tmp = date->month;
+	buf[idx++] = (tmp >> 4) + '0';
+	buf[idx++] = (tmp & 0xf) + '0';
+	buf[idx++] = '-';
+
+	tmp = date->date;
+	buf[idx++] = (tmp >> 4) + '0';
+	buf[idx++] = (tmp & 0xf) + '0';
+	buf[idx++] = '-';
+
+	tmp = date->hours;
+	buf[idx++] = (tmp >> 4) + '0';
+	buf[idx++] = (tmp & 0xf) + '0';
+	buf[idx++] = ':';
+
+	tmp = date->minutes;
+	buf[idx++] = (tmp >> 4) + '0';
+	buf[idx++] = (tmp & 0xf) + '0';
+	buf[idx++] = ':';
+
+	tmp = date->seconds;
+	buf[idx++] = (tmp >> 4) + '0';
+	buf[idx++] = (tmp & 0xf) + '0';
+	buf[idx++] = '\0';
+
+	return buf;
+}
