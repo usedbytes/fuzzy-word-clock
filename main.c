@@ -502,14 +502,6 @@ void button_init(void)
 	timer->PR = 65535;
 }
 
-uint16_t get_time()
-{
-	static uint16_t time = TIME(0, 0);
-
-	time = time_add(time, TIME(0, 10));
-	return time;
-}
-
 void sleep_until(uint8_t day, uint16_t time)
 {
 	struct rtc_date date;
@@ -570,28 +562,24 @@ int main(void)
 		for (i = 0; i < n_timebands; i++) {
 			if (time >= timebands[i].start) {
 				band = i;
-			} else {
-				break;
 			}
 		}
-
-		display(timebands[band].sentence);
 
 		u32_to_str((*(uint32_t*)&date), buf);
 		usb_usart_print(buf);
 
-		delay_ms(160);
+		display(timebands[band].sentence);
 
 		day = date.day;
-		i = i + 1;
-		if (i >= n_timebands) {
-			i = 0;
+		band = band + 1;
+		if (band >= n_timebands) {
+			band = 0;
 			day++;
 			if (day > 7) {
 				day = 1;
 			}
 		}
-		sleep_until(day, timebands[i].start);
+		sleep_until(day, timebands[band].start);
 	}
 
 	return 0;
