@@ -4,6 +4,7 @@
 
 #include "LPC11Uxx.h"
 
+#include "iap.h"
 #include "ds1302.h"
 #include "usb_cdc.h"
 #include "util.h"
@@ -693,6 +694,7 @@ int handle_get_command(char **saveptr)
 
 int handle_command(char *buf)
 {
+	int ret = 0;
 	char *saveptr;
 	char *tok = strtok_r(buf, " \r", &saveptr);
 
@@ -703,6 +705,38 @@ int handle_command(char *buf)
 	if (!strcmp(tok, "RESET")) {
 		usb_usart_print("\nRESET\r\n");
 		NVIC_SystemReset();
+		return 0;
+	} else if (!strcmp(tok, "ID")) {
+		uint32_t *result;
+		char str[9];
+		str[8] = '\0';
+
+		ret = iap_read_partid(&result);
+		if (ret) {
+			return ret;
+		}
+		usb_usart_print("\nPARTID: ");
+		u32_to_str(result[0], str);
+		usb_usart_print(str);
+		usb_usart_print("\r");
+
+		ret = iap_read_uid(&result);
+		if (ret) {
+			return ret;
+		}
+		usb_usart_print("\nUID: ");
+		u32_to_str(result[0], str);
+		usb_usart_print(str);
+		usb_usart_print(" ");
+		u32_to_str(result[1], str);
+		usb_usart_print(str);
+		usb_usart_print(" ");
+		u32_to_str(result[2], str);
+		usb_usart_print(str);
+		usb_usart_print(" ");
+		u32_to_str(result[3], str);
+		usb_usart_print(str);
+		usb_usart_print("\r\n");
 		return 0;
 	} else if (!strcmp(tok, "SET")) {
 		return handle_set_command(&saveptr);
