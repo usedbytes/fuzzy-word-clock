@@ -85,11 +85,11 @@ const uint8_t sequence[] = {
 
 #define TIME(h, m) ((h << 8) | (m))
 const uint16_t times[] = {
-	[BREAKFAST] = TIME(8, 0),
-	[LUNCH]     = TIME(12, 20),
-	[HOME]      = TIME(17, 30),
-	[DINNER]    = TIME(19, 0),
-	[BED]       = TIME(22, 0),
+	[BREAKFAST] = TIME(0x08, 0x00),
+	[LUNCH]     = TIME(0x12, 0x20),
+	[HOME]      = TIME(0x17, 0x30),
+	[DINNER]    = TIME(0x19, 0x00),
+	[BED]       = TIME(0x22, 0x00),
 };
 
 struct timeband {
@@ -103,12 +103,12 @@ struct timeband timebands[20];
 
 uint8_t hours(uint16_t time)
 {
-	return time >> 8;
+	return bcd_to_dec(time >> 8);
 }
 
 uint8_t mins(uint16_t time)
 {
-	return time & 0xFF;
+	return bcd_to_dec(time & 0xFF);
 }
 
 uint16_t time_add(uint16_t a, uint16_t b)
@@ -125,7 +125,7 @@ uint16_t time_add(uint16_t a, uint16_t b)
 		h -= 24;
 	}
 
-	return TIME(h, m);
+	return TIME(dec_to_bcd(h), dec_to_bcd(m));
 }
 
 uint16_t time_sub(uint16_t a, uint16_t b)
@@ -145,7 +145,7 @@ uint16_t time_sub(uint16_t a, uint16_t b)
 		h -= 24;
 	}
 
-	return TIME(h, m);
+	return TIME(dec_to_bcd(h), dec_to_bcd(m));
 }
 
 void build_timebands()
@@ -158,7 +158,7 @@ void build_timebands()
 	n_timebands++;
 
 	for (i = 0; i < N_COURSES; i++) {
-		uint16_t tmp = time_sub(times[i], TIME(0, 15));
+		uint16_t tmp = time_sub(times[i], TIME(0, 0x15));
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
 			.sentence = BIT(ITS_TIME) | BIT(NEARLY) | BIT(i),
@@ -171,7 +171,7 @@ void build_timebands()
 		};
 		n_timebands++;
 
-		tmp = time_add(times[i], TIME(0, 15));
+		tmp = time_add(times[i], TIME(0, 0x15));
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
 			.sentence = BIT(ITS_TIME) | BIT(PAST) | BIT(i),
@@ -552,12 +552,12 @@ int main(void)
 
 	struct rtc_date date = {
 		.seconds = 0,
-		.minutes = 0,
-		.hours = 10,
-		.date = 24,
-		.month = 12,
-		.day = 1,
-		.year = 19,
+		.minutes = 0x46,
+		.hours = 0x12,
+		.date = 0x24,
+		.month = 0x12,
+		.day = 0x2,
+		.year = 0x19,
 	};
 	//rtc_write_date(&date);
 	uint16_t time;

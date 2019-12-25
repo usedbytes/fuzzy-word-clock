@@ -43,3 +43,6 @@ void rtc_write_ram(uint8_t *data, unsigned int len);
 /* Peek/poke RAM location */
 uint8_t rtc_peek(uint8_t addr);
 void rtc_poke(uint8_t addr, uint8_t data);
+
+uint8_t dec_to_bcd(uint8_t dec);
+uint8_t bcd_to_dec(uint8_t bcd);
