@@ -897,16 +897,7 @@ int main(void)
 		}
 	}
 
-	struct rtc_date date = {
-		.seconds = 0,
-		.minutes = 0x46,
-		.hours = 0x12,
-		.date = 0x24,
-		.month = 0x12,
-		.day = 0x2,
-		.year = 0x19,
-	};
-	//rtc_write_date(&date);
+	struct rtc_date date;
 	uint16_t time;
 	uint8_t day;
 	while(1) {
