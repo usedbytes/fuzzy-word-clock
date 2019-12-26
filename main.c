@@ -37,6 +37,9 @@
 #define PWM_RESOLUTION 10
 #define MIN_CYCLES_LOG2 2
 
+#define EEPROM_TIME_OFFSET 4
+#define EEPROM_MAGIC ((uint32_t)(('f' << 24) | ('u' << 16) | ('z' << 8) | ('z' << 0)))
+
 #define BREAKFAST   0
 #define LUNCH       1
 #define HOME        2
@@ -48,6 +51,7 @@
 #define BIT(x)      (1 << (x))
 
 #define N_COURSES 5
+#define N_TIMES   7
 
 const uint8_t channel_map[] = {
 	[BREAKFAST] =  2,
@@ -86,12 +90,14 @@ const uint8_t sequence[] = {
 };
 
 #define TIME(h, m) ((h << 8) | (m))
-const uint16_t times[] = {
+uint16_t times[] = {
 	[BREAKFAST] = TIME(0x08, 0x00),
 	[LUNCH]     = TIME(0x12, 0x20),
 	[HOME]      = TIME(0x17, 0x30),
 	[DINNER]    = TIME(0x19, 0x00),
 	[BED]       = TIME(0x22, 0x00),
+	[NEARLY]    = TIME(0x00, 0x15),
+	[PAST]      = TIME(0x00, 0x15),
 };
 
 struct timeband {
@@ -160,7 +166,7 @@ void build_timebands()
 	n_timebands++;
 
 	for (i = 0; i < N_COURSES; i++) {
-		uint16_t tmp = time_sub(times[i], TIME(0, 0x15));
+		uint16_t tmp = time_sub(times[i], times[NEARLY]);
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
 			.sentence = BIT(ITS_TIME) | BIT(NEARLY) | BIT(i),
@@ -173,7 +179,7 @@ void build_timebands()
 		};
 		n_timebands++;
 
-		tmp = time_add(times[i], TIME(0, 0x15));
+		tmp = time_add(times[i], times[PAST]);
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
 			.sentence = BIT(ITS_TIME) | BIT(PAST) | BIT(i),
@@ -554,10 +560,9 @@ void sleep_until(uint8_t day, uint16_t time)
 	}
 }
 
-int parse_time(char *buf, uint16_t *time)
+int parse_time(char *buf, char **saveptr, uint16_t *time)
 {
-	char *saveptr;
-	char *tok = strtok_r(buf, ":", &saveptr);
+	char *tok = strtok_r(buf, ":", saveptr);
 	uint8_t h, m;
 	if (tok == NULL) {
 		return -1;
@@ -565,13 +570,13 @@ int parse_time(char *buf, uint16_t *time)
 	if (strlen(tok) != 2) {
 		return -1;
 	}
-	h = ((tok[0] - '0') << 4) | (time[1] - '0');
+	h = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
-	tok = strtok_r(NULL, "\r\n", &saveptr);
+	tok = strtok_r(NULL, "\r\n", saveptr);
 	if (strlen(tok) != 2) {
 		return -1;
 	}
-	m = ((tok[0] - '0') << 4) | (time[1] - '0');
+	m = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
 	*time = TIME(h, m);
 
@@ -579,10 +584,9 @@ int parse_time(char *buf, uint16_t *time)
 }
 
 /* 2019-12-25-12:25:00 */
-int parse_datetime(char *buf, struct rtc_date *date)
+int parse_datetime(char *buf, char **saveptr, struct rtc_date *date)
 {
-	char *saveptr;
-	char *tok = strtok_r(buf, "-", &saveptr);
+	char *tok = strtok_r(buf, "-", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -591,7 +595,7 @@ int parse_datetime(char *buf, struct rtc_date *date)
 	}
 	date->year = ((tok[2] - '0') << 4) | (tok[3] - '0');
 
-	tok = strtok_r(NULL, "-", &saveptr);
+	tok = strtok_r(NULL, "-", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -600,7 +604,7 @@ int parse_datetime(char *buf, struct rtc_date *date)
 	}
 	date->month = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
-	tok = strtok_r(NULL, "-", &saveptr);
+	tok = strtok_r(NULL, "-", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -609,7 +613,7 @@ int parse_datetime(char *buf, struct rtc_date *date)
 	}
 	date->date = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
-	tok = strtok_r(NULL, ":", &saveptr);
+	tok = strtok_r(NULL, ":", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -618,7 +622,7 @@ int parse_datetime(char *buf, struct rtc_date *date)
 	}
 	date->hours = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
-	tok = strtok_r(NULL, ":", &saveptr);
+	tok = strtok_r(NULL, ":", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -627,7 +631,7 @@ int parse_datetime(char *buf, struct rtc_date *date)
 	}
 	date->minutes = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
-	tok = strtok_r(NULL, ":", &saveptr);
+	tok = strtok_r(NULL, ":", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -639,22 +643,57 @@ int parse_datetime(char *buf, struct rtc_date *date)
 	return 0;
 }
 
-int handle_set_command(char **saveptr)
+int set_meal(int meal, char *buf, char **saveptr)
 {
-	int ret = 0;
-	char *tok = strtok_r(NULL, " ", saveptr);
+	int ret;
+	uint16_t time;
+
+	ret = parse_time(buf, saveptr, &time);
+	if (ret) {
+		return ret;
+	}
+
+	return iap_eeprom_write(EEPROM_TIME_OFFSET + (meal * 2), &time, 2);
+}
+
+int get_meal(int meal)
+{
+	int ret;
+	char buf[10];
+	int idx = 0;
+	uint16_t time = 0;
+
+	ret = iap_eeprom_read(EEPROM_TIME_OFFSET + (meal * 2), &time, 2);
+	if (ret) {
+		return ret;
+	}
+
+	buf[idx++] = ((time >> 12) & 0xf) + '0';
+	buf[idx++] = ((time >> 8) & 0xf) + '0';
+	buf[idx++] = ':';
+
+	buf[idx++] = ((time >> 4) & 0xf) + '0';
+	buf[idx++] = ((time >> 0) & 0xf) + '0';
+	buf[idx++] = '\0';
+	usb_usart_print("\r\n");
+	usb_usart_print(buf);
+	usb_usart_print("\r\n");
+
+	return 0;
+}
+
+int handle_set_command(char *buf, char **saveptr)
+{
+	int ret = -1;
+	char *tok = strtok_r(buf, " ", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
 
 	if (!strcmp(tok, "TIME")) {
 		struct rtc_date date = { 0 };
-		tok = strtok_r(NULL, "\r", saveptr);
-		if (tok == NULL) {
-			return -1;
-		}
 
-		ret = parse_datetime(tok, &date);
+		ret = parse_datetime(NULL, saveptr, &date);
 		if (ret) {
 			return ret;
 		}
@@ -663,6 +702,20 @@ int handle_set_command(char **saveptr)
 		usb_usart_print(rtc_date_to_str(&date));
 		rtc_write_date(&date);
 		usb_usart_print("\r");
+	} else if (!strcmp(tok, "BREAKFAST")) {
+		ret = set_meal(BREAKFAST, NULL, saveptr);
+	} else if (!strcmp(tok, "LUNCH")) {
+		ret = set_meal(LUNCH, NULL, saveptr);
+	} else if (!strcmp(tok, "HOME")) {
+		ret = set_meal(HOME, NULL, saveptr);
+	} else if (!strcmp(tok, "DINNER")) {
+		ret = set_meal(DINNER, NULL, saveptr);
+	} else if (!strcmp(tok, "BED")) {
+		ret = set_meal(BED, NULL, saveptr);
+	} else if (!strcmp(tok, "NEARLY")) {
+		ret = set_meal(NEARLY, NULL, saveptr);
+	} else if (!strcmp(tok, "PAST")) {
+		ret = set_meal(PAST, NULL, saveptr);
 	}
 
 	if (!ret) {
@@ -672,10 +725,10 @@ int handle_set_command(char **saveptr)
 	return ret;
 }
 
-int handle_get_command(char **saveptr)
+int handle_get_command(char *buf, char **saveptr)
 {
-	int ret = 0;
-	char *tok = strtok_r(NULL, "\r", saveptr);
+	int ret = -1;
+	char *tok = strtok_r(buf, "\r", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
@@ -687,6 +740,21 @@ int handle_get_command(char **saveptr)
 		usb_usart_print("\r\n");
 		usb_usart_print(rtc_date_to_str(&date));
 		usb_usart_print("\r\n");
+		ret = 0;
+	} else if (!strcmp(tok, "BREAKFAST")) {
+		ret = get_meal(BREAKFAST);
+	} else if (!strcmp(tok, "LUNCH")) {
+		ret = get_meal(LUNCH);
+	} else if (!strcmp(tok, "HOME")) {
+		ret = get_meal(HOME);
+	} else if (!strcmp(tok, "DINNER")) {
+		ret = get_meal(DINNER);
+	} else if (!strcmp(tok, "BED")) {
+		ret = get_meal(BED);
+	} else if (!strcmp(tok, "NEARLY")) {
+		ret = get_meal(NEARLY);
+	} else if (!strcmp(tok, "PAST")) {
+		ret = get_meal(PAST);
 	}
 
 	return ret;
@@ -739,9 +807,9 @@ int handle_command(char *buf)
 		usb_usart_print("\r\n");
 		return 0;
 	} else if (!strcmp(tok, "SET")) {
-		return handle_set_command(&saveptr);
+		return handle_set_command(NULL, &saveptr);
 	} else if (!strcmp(tok, "GET")) {
-		return handle_get_command(&saveptr);
+		return handle_get_command(NULL, &saveptr);
 	}
 
 	return -1;
@@ -803,7 +871,31 @@ int main(void)
 
 	init_timer16(0);
 
-	int i = 0;
+	int ret, i = 0;
+
+	uint32_t magic = 0;
+	ret = iap_eeprom_read(0, &magic, 4);
+	if (ret == 0) {
+		if (magic == EEPROM_MAGIC) {
+			/* Load times from EEPROM */
+			for (i = 0; i < N_TIMES; i++) {
+				ret = iap_eeprom_read(EEPROM_TIME_OFFSET + (i * 2), &times[i], 2);
+				if (ret != 0) {
+					break;
+				}
+			}
+		} else {
+			/* Store defaults to EEPROM */
+			for (i = 0; i < N_TIMES; i++) {
+				ret = iap_eeprom_write(EEPROM_TIME_OFFSET + (i * 2), &times[i], 2);
+				if (ret != 0) {
+					break;
+				}
+			}
+			magic = EEPROM_MAGIC;
+			iap_eeprom_write(0, &magic, 4);
+		}
+	}
 
 	struct rtc_date date = {
 		.seconds = 0,

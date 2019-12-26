@@ -25,4 +25,8 @@
 
 int iap_read_partid(uint32_t **result);
 int iap_read_uid(uint32_t **result);
+
+int iap_eeprom_write(uint32_t eeprom_addr, void *data, uint32_t len);
+int iap_eeprom_read(uint32_t eeprom_addr, void *data, uint32_t len);
+
 #endif /* __IAP_H__ */
