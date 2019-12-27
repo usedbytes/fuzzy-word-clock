@@ -38,7 +38,11 @@
 #define PWM_RESOLUTION 10
 #define MIN_CYCLES_LOG2 2
 
+#define N_COURSES 5
+#define N_TIMES   7
+
 #define EEPROM_TIME_OFFSET 4
+#define EEPROM_BRIGHTNESS_OFFSET (EEPROM_TIME_OFFSET + (N_TIMES * 2))
 #define EEPROM_MAGIC ((uint32_t)(('f' << 24) | ('u' << 16) | ('z' << 8) | ('z' << 0)))
 
 #define BREAKFAST   0
@@ -50,9 +54,6 @@
 #define PAST        6
 #define ITS_TIME    7
 #define BIT(x)      (1 << (x))
-
-#define N_COURSES 5
-#define N_TIMES   7
 
 const uint8_t channel_map[] = {
 	[BREAKFAST] =  2,
@@ -109,6 +110,7 @@ struct timeband {
 
 int n_timebands = 0;
 struct timeband timebands[20];
+uint16_t brightness = 0xffff;
 
 uint8_t hours(uint16_t time)
 {
@@ -201,6 +203,7 @@ enum button_state {
 	HELD,
 };
 volatile enum button_state button = NONE;
+volatile bool dirty = false;
 
 volatile uint32_t bitslices[2][PWM_RESOLUTION];
 volatile uint8_t in_use_set = 0;
@@ -451,10 +454,9 @@ static void init_timer32()
 
 const uint32_t anim_length = 2048;
 volatile uint32_t anim_start;
-volatile uint8_t in;
-volatile uint8_t out;
 uint32_t state[N_CHANNELS];
 uint32_t start[N_CHANNELS];
+uint32_t target[N_CHANNELS];
 
 uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
 {
@@ -476,15 +478,11 @@ void TIMER_32_0_Handler(void)
 
 		uint32_t i, val = 0;
 		for (i = 0; i < N_CHANNELS; i++) {
-			if (in & (1 << i)) {
-				val = lerp(start[i], 0xffff, tmp, anim_length);
-			} else if (out & (1 << i)) {
-				val = lerp(start[i], 0, tmp, anim_length);
-			} else {
-				val = state[i];
+			if (state[i] != target[i]) {
+				val = lerp(start[i], target[i], tmp, anim_length);
+				state[i] = val;
+				pwm_set(channel_map[i], val);
 			}
-			state[i] = val;
-			pwm_set(channel_map[i], val);
 		}
 
 		pwm_flip();
@@ -495,22 +493,18 @@ void TIMER_32_0_Handler(void)
 void display(uint8_t sentence)
 {
 	int i;
-	static uint8_t current = 0;
-
-	if (current == sentence) {
-		return;
-	}
 
 	NVIC_DisableIRQ(TIMER_32_0_IRQn);
 	for (i = 0; i < N_CHANNELS; i++) {
 		start[i] = state[i];
+		if (sentence & (1 << i)) {
+			target[i] = brightness;
+		} else {
+			target[i] = 0;
+		}
 	}
 	anim_start = msTicks;
-	in = sentence & ~current;
-	out = current & ~sentence;
 	NVIC_EnableIRQ(TIMER_32_0_IRQn);
-
-	current = sentence;
 }
 
 void button_init(void)
@@ -578,6 +572,35 @@ int parse_time(char *buf, char **saveptr, uint16_t *time)
 	m = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
 	*time = TIME(h, m);
+
+	return 0;
+}
+
+int parse_u16_hex(char *buf, char **saveptr, uint16_t *val)
+{
+	char *tok = strtok_r(buf, " \r", saveptr);
+	uint16_t tmp = 0;
+	int i;
+	if (tok == NULL) {
+		return -1;
+	}
+	if (strlen(tok) != 6) {
+		return -1;
+	}
+
+	for (i = 2; i < 6; i++) {
+		tmp <<= 4;
+
+		if ((tok[i] >= 'a') && (tok[i] <= 'f')) {
+			tmp |= (tok[i] - 'a') + 0xA;
+		} else if ((tok[i] >= 'A') && (tok[i] <= 'F')) {
+			tmp |= (tok[i] - 'A') + 0xA;
+		} else if ((tok[i] >= '0') && (tok[i] <= '9')) {
+			tmp |= (tok[i] - '0');
+		}
+	}
+
+	*val = tmp;
 
 	return 0;
 }
@@ -715,9 +738,18 @@ int handle_set_command(char *buf, char **saveptr)
 		ret = set_meal(NEARLY, NULL, saveptr);
 	} else if (!strcmp(tok, "PAST")) {
 		ret = set_meal(PAST, NULL, saveptr);
+	} else if (!strcmp(tok, "BRIGHTNESS")) {
+		uint16_t val;
+		ret = parse_u16_hex(NULL, saveptr, &val);
+		if (ret) {
+			return ret;
+		}
+		brightness = val;
+		ret = iap_eeprom_write(EEPROM_BRIGHTNESS_OFFSET, &val, 2);
 	}
 
 	if (!ret) {
+		dirty = true;
 		usb_usart_print("\nOK\r\n");
 	}
 
@@ -754,6 +786,15 @@ int handle_get_command(char *buf, char **saveptr)
 		ret = get_meal(NEARLY);
 	} else if (!strcmp(tok, "PAST")) {
 		ret = get_meal(PAST);
+	} else if (!strcmp(tok, "BRIGHTNESS")) {
+		uint16_t val;
+		char str[] = "\r\n0xXXXXXXXX\r\n";
+		ret = iap_eeprom_read(EEPROM_BRIGHTNESS_OFFSET, &val, 2);
+		if (ret) {
+			return ret;
+		}
+		u32_to_str(val, &str[4]);
+		usb_usart_print(str);
 	}
 
 	return ret;
@@ -882,6 +923,7 @@ int main(void)
 					break;
 				}
 			}
+			iap_eeprom_read(EEPROM_BRIGHTNESS_OFFSET, &brightness, 2);
 		} else {
 			/* Store defaults to EEPROM */
 			for (i = 0; i < N_TIMES; i++) {
@@ -890,8 +932,11 @@ int main(void)
 					break;
 				}
 			}
-			magic = EEPROM_MAGIC;
-			iap_eeprom_write(0, &magic, 4);
+			ret = iap_eeprom_write(EEPROM_BRIGHTNESS_OFFSET, &brightness, 2);
+			if (ret == 0) {
+				magic = EEPROM_MAGIC;
+				iap_eeprom_write(0, &magic, 4);
+			}
 		}
 	}
 
@@ -900,6 +945,7 @@ int main(void)
 	struct rtc_date date;
 	uint16_t time;
 	uint8_t day;
+	uint8_t sentence = 0;
 	while(1) {
 		rtc_read_date(&date);
 		time = TIME(date.hours, date.minutes);
@@ -910,8 +956,15 @@ int main(void)
 				band = i;
 			}
 		}
+		if (timebands[band].sentence != sentence) {
+			sentence = timebands[band].sentence;
+			dirty = true;
+		}
 
-		display(timebands[band].sentence);
+		if (dirty) {
+			display(timebands[band].sentence);
+			dirty = false;
+		}
 
 		handle_usart();
 
