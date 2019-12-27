@@ -259,7 +259,7 @@ void TIMER_16_0_Handler(void) {
 	DBG_LOW();
 }
 
-static void init_timer16()
+static void init_timer16(void)
 {
 	LPC_CTxxBx_Type *timer = LPC_CT16B0;
 
@@ -908,7 +908,7 @@ int main(void)
 
 	delay_ms(100);
 
-	init_timer16(0);
+	init_timer16();
 
 	int ret, i = 0;
 
