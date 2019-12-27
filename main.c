@@ -6,6 +6,7 @@
 
 #include "iap.h"
 #include "ds1302.h"
+#include "lut.h"
 #include "usb_cdc.h"
 #include "util.h"
 
@@ -330,9 +331,7 @@ void pwm_flip() {
 }
 
 void pwm_set(uint8_t channel, uint16_t value) {
-	/* FIXME: HAX, only works for 8 bit */
-	//values[channel] = gamma8[value >> 8] << 8;
-	values[channel] = value;
+	values[channel] = lut1d(value);
 }
 
 void leds_init(void)

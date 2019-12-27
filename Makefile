@@ -7,6 +7,7 @@ SOURCES = lpc11uxx/system_LPC11Uxx.c \
 		  ds1302.c \
 		  usb_cdc.c \
 		  iap.c \
+		  lut.c \
 		  util.c
 
 # Linker script
