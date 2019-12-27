@@ -520,7 +520,7 @@ void button_init(void)
 	NVIC_SetPriority(FLEX_INT0_IRQn, 3);
 	NVIC_EnableIRQ(FLEX_INT0_IRQn);
 
-	LPC_SYSCON->PINTSEL[0] = 17;
+	LPC_SYSCON->PINTSEL[0] = 1;
 	LPC_GPIO_PIN_INT->FALL = (1 << 0);
 	LPC_GPIO_PIN_INT->SIENF = (1 << 0);
 
