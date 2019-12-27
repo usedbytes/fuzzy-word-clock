@@ -203,6 +203,11 @@ enum button_state {
 	HELD,
 };
 volatile enum button_state button = NONE;
+enum clock_mode {
+	NORMAL,
+	BLANKED,
+};
+volatile enum clock_mode mode = NORMAL;
 volatile bool dirty = false;
 
 volatile uint32_t bitslices[2][PWM_RESOLUTION];
@@ -365,6 +370,13 @@ void u32_to_str(uint32_t val, char *buf)
 	}
 }
 
+void print_u32(uint32_t val)
+{
+	char buf[11] = "        \r\n";
+	u32_to_str(val, buf);
+	usb_usart_print(buf);
+}
+
 void WAKEUP0_Handler(void)
 {
 	uint32_t stat = LPC_GPIO_PIN_INT->IST;
@@ -374,9 +386,9 @@ void WAKEUP0_Handler(void)
 
 			LPC_GPIO_PIN_INT->ISEL &= ~(1 << 0);
 			LPC_GPIO_PIN_INT->FALL = (1 << 0);
+			LPC_GPIO_PIN_INT->RISE = (1 << 0);
 			LPC_GPIO_PIN_INT->CIENF = (1 << 0);
 			LPC_GPIO_PIN_INT->CIENR = (1 << 0);
-			LPC_GPIO_PIN_INT->IST = (1 << 0);
 
 			/* Reset to falling-edge triggered */
 			LPC_GPIO_PIN_INT->SIENF = (1 << 0);
@@ -384,20 +396,21 @@ void WAKEUP0_Handler(void)
 			if (LPC_CT16B1->TC < 700) {
 				button = PRESSED;
 			}
-
 			LPC_CT16B1->TC = 0x0;
-		} else {
-			LPC_GPIO_PIN_INT->CIENF = (1 << 0);
-			LPC_GPIO_PIN_INT->FALL = (1 << 0);
-			LPC_GPIO_PIN_INT->IST = (1 << 0);
 
-			/* Stop after 30ms */
-			LPC_CT16B1->MR3 = 21;
+		} else {
+			LPC_GPIO_PIN_INT->FALL = (1 << 0);
+			LPC_GPIO_PIN_INT->RISE = (1 << 0);
+			LPC_GPIO_PIN_INT->CIENF = (1 << 0);
+			LPC_GPIO_PIN_INT->CIENR = (1 << 0);
+
+			LPC_CT16B1->MR3 = 150;
 			LPC_CT16B1->MCR = (1 << 9) | (1 << 11);
 			LPC_CT16B1->TC = 0x0;
 			LPC_CT16B1->TCR = 0x1;
 		}
 	}
+	LPC_GPIO_PIN_INT->IST = stat;
 }
 
 void TIMER_16_1_Handler(void)
@@ -406,8 +419,10 @@ void TIMER_16_1_Handler(void)
 	if (status & (1 << 3)) {
 		/* 30ms expired */
 		/* Select high level triggered */
-		LPC_GPIO_PIN_INT->FALL = (1 << 0);
+		NVIC_DisableIRQ(FLEX_INT0_IRQn);
 		LPC_GPIO_PIN_INT->ISEL = (1 << 0);
+		LPC_GPIO_PIN_INT->FALL = (1 << 0);
+		LPC_GPIO_PIN_INT->RISE = (1 << 0);
 		LPC_GPIO_PIN_INT->SIENF = (1 << 0);
 		LPC_GPIO_PIN_INT->SIENR = (1 << 0);
 
@@ -416,9 +431,11 @@ void TIMER_16_1_Handler(void)
 		LPC_CT16B1->MCR = (1 << 6) | (1 << 8);
 		LPC_CT16B1->TC = 0x0;
 		LPC_CT16B1->TCR = 0x1;
+		NVIC_EnableIRQ(FLEX_INT0_IRQn);
 	}
 	if (status & (1 << 2)) {
 		/* 3s expired */
+		NVIC_DisableIRQ(FLEX_INT0_IRQn);
 		LPC_GPIO_PIN_INT->ISEL &= ~(1 << 0);
 		LPC_GPIO_PIN_INT->FALL = (1 << 0);
 		LPC_GPIO_PIN_INT->CIENF = (1 << 0);
@@ -429,6 +446,7 @@ void TIMER_16_1_Handler(void)
 		LPC_GPIO_PIN_INT->SIENF = (1 << 0);
 
 		button = HELD;
+		NVIC_EnableIRQ(FLEX_INT0_IRQn);
 	}
 	LPC_CT16B1->IR = status;
 }
@@ -454,20 +472,20 @@ static void init_timer32()
 
 const uint32_t anim_length = 2048;
 volatile uint32_t anim_start;
-uint32_t state[N_CHANNELS];
-uint32_t start[N_CHANNELS];
-uint32_t target[N_CHANNELS];
+uint16_t state[N_CHANNELS];
+uint16_t start[N_CHANNELS];
+uint16_t target[N_CHANNELS];
 
 uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
 {
-	uint32_t diff = to - from;
+	int32_t diff = to - from;
 	uint32_t x = (pos << 16) / max;
 
 	if (pos >= max) {
 		return to;
 	}
 
-	return from + ((diff * x) >> 16);
+	return from + ((diff * x) / 65536);
 }
 
 void TIMER_32_0_Handler(void)
@@ -958,15 +976,39 @@ int main(void)
 		}
 		if (timebands[band].sentence != sentence) {
 			sentence = timebands[band].sentence;
+			if ((mode == BLANKED) &&
+			    (sentence & (BIT(NEARLY)) &&
+			    (sentence & (BIT(BREAKFAST))))) {
+				mode = NORMAL;
+			}
 			dirty = true;
 		}
 
+		if (button == PRESSED) {
+			if (mode == NORMAL) {
+				mode = BLANKED;
+			} else if (mode == BLANKED) {
+				mode = NORMAL;
+			}
+			dirty = true;
+			button = NONE;
+		} else if (button == HELD) {
+			button = NONE;
+		}
+
+		handle_usart();
+
 		if (dirty) {
+			if (mode == NORMAL) {
+				iap_eeprom_read(EEPROM_BRIGHTNESS_OFFSET, &brightness, 2);
+			} else if (mode == BLANKED) {
+				brightness = 0;
+			}
 			display(timebands[band].sentence);
 			dirty = false;
 		}
 
-		handle_usart();
+		delay_ms(10);
 
 		/*
 		day = date.day;
