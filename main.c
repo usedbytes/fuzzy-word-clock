@@ -206,6 +206,7 @@ volatile enum button_state button = NONE;
 enum clock_mode {
 	NORMAL,
 	BLANKED,
+	DEMO,
 };
 volatile enum clock_mode mode = NORMAL;
 volatile bool dirty = false;
@@ -476,6 +477,16 @@ uint16_t state[N_CHANNELS];
 uint16_t start[N_CHANNELS];
 uint16_t target[N_CHANNELS];
 
+uint32_t ms_since(uint32_t since)
+{
+	uint32_t now = msTicks;
+	if (now < since) {
+		return now + (0xffffffff - since) + 1;
+	}
+
+	return now - since;
+}
+
 uint32_t lerp(uint32_t from, uint32_t to, uint32_t pos, uint32_t max)
 {
 	int32_t diff = to - from;
@@ -492,7 +503,7 @@ void TIMER_32_0_Handler(void)
 {
 	uint32_t status = LPC_CT32B0->IR;
 	if (status & (1 << 3)) {
-		uint32_t tmp = msTicks - anim_start;
+		uint32_t tmp = ms_since(anim_start);
 
 		uint32_t i, val = 0;
 		for (i = 0; i < N_CHANNELS; i++) {
@@ -567,7 +578,7 @@ void sleep_until(uint8_t day, uint16_t time)
 		}
 
 		sleep_start = msTicks;
-		while ((msTicks - sleep_start) < (1000 * 60));
+		while ((ms_since(sleep_start)) < (1000 * 60));
 	}
 }
 
@@ -961,19 +972,46 @@ int main(void)
 	build_timebands();
 
 	struct rtc_date date;
-	uint16_t time;
-	uint8_t day;
 	uint8_t sentence = 0;
+	int band = 0;
+	uint32_t demo_last_change = 0;
 	while(1) {
-		rtc_read_date(&date);
-		time = TIME(date.hours, date.minutes);
+		if (button == PRESSED) {
+			if (mode == NORMAL) {
+				mode = BLANKED;
+			} else if (mode == BLANKED) {
+				mode = NORMAL;
+			}
+			dirty = true;
+			button = NONE;
+		} else if (button == HELD) {
+			if (mode == DEMO) {
+				mode = NORMAL;
+			} else if ((mode == NORMAL) || (mode == BLANKED)) {
+				mode = DEMO;
+			}
+			dirty = true;
+			button = NONE;
+		}
 
-		int band = 0;
-		for (i = 0; i < n_timebands; i++) {
-			if (time >= timebands[i].start) {
-				band = i;
+		if (mode == DEMO) {
+			if (ms_since(demo_last_change) >= anim_length + 512) {
+				demo_last_change = msTicks;
+				band++;
+			}
+			if (band >= n_timebands) {
+				band = 0;
+			}
+		} else {
+			rtc_read_date(&date);
+			uint16_t time = TIME(date.hours, date.minutes);
+			for (i = 0; i < n_timebands; i++) {
+				if (time >= timebands[i].start) {
+					band = i;
+				}
 			}
 		}
+
 		if (timebands[band].sentence != sentence) {
 			sentence = timebands[band].sentence;
 			if ((mode == BLANKED) &&
@@ -984,44 +1022,19 @@ int main(void)
 			dirty = true;
 		}
 
-		if (button == PRESSED) {
-			if (mode == NORMAL) {
-				mode = BLANKED;
-			} else if (mode == BLANKED) {
-				mode = NORMAL;
-			}
-			dirty = true;
-			button = NONE;
-		} else if (button == HELD) {
-			button = NONE;
-		}
-
 		handle_usart();
 
 		if (dirty) {
-			if (mode == NORMAL) {
-				iap_eeprom_read(EEPROM_BRIGHTNESS_OFFSET, &brightness, 2);
-			} else if (mode == BLANKED) {
+			if (mode == BLANKED) {
 				brightness = 0;
+			} else {
+				iap_eeprom_read(EEPROM_BRIGHTNESS_OFFSET, &brightness, 2);
 			}
 			display(timebands[band].sentence);
 			dirty = false;
 		}
 
 		delay_ms(10);
-
-		/*
-		day = date.day;
-		band = band + 1;
-		if (band >= n_timebands) {
-			band = 0;
-			day++;
-			if (day > 7) {
-				day = 1;
-			}
-		}
-		sleep_until(day, timebands[band].start);
-		*/
 	}
 
 	return 0;
