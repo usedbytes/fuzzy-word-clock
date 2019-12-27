@@ -630,7 +630,7 @@ int parse_datetime(char *buf, char **saveptr, struct rtc_date *date)
 	}
 	date->minutes = ((tok[0] - '0') << 4) | (tok[1] - '0');
 
-	tok = strtok_r(NULL, ":", saveptr);
+	tok = strtok_r(NULL, " \r", saveptr);
 	if (tok == NULL) {
 		return -1;
 	}
