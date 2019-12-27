@@ -859,7 +859,6 @@ int main(void)
 	LPC_GPIO->CLR[DBG_PORT] = DBG_PIN | DBG_PIN1;
 #endif
 
-	build_timebands();
 	button_init();
 	rtc_init();
 	usb_init();
@@ -895,6 +894,8 @@ int main(void)
 			iap_eeprom_write(0, &magic, 4);
 		}
 	}
+
+	build_timebands();
 
 	struct rtc_date date;
 	uint16_t time;
