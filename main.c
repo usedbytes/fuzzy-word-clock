@@ -38,12 +38,14 @@
 #define PWM_RESOLUTION 10
 #define MIN_CYCLES_LOG2 2
 
-#define N_COURSES 5
-#define N_TIMES   7
+#define N_MEALS   5
+#define N_TIMES   8
 
 #define EEPROM_TIME_OFFSET 4
 #define EEPROM_BRIGHTNESS_OFFSET (EEPROM_TIME_OFFSET + (N_TIMES * 2))
-#define EEPROM_MAGIC ((uint32_t)(('f' << 24) | ('u' << 16) | ('z' << 8) | ('z' << 0)))
+
+#define EEPROM_VERSION 1 // Increment this every time the EEPROM layout changes
+#define EEPROM_MAGIC (((uint32_t)(('f' << 24) | ('u' << 16) | ('z' << 8) | ('z' << 0))) + EEPROM_VERSION)
 
 #define BREAKFAST   0
 #define LUNCH       1
@@ -52,6 +54,8 @@
 #define BED         4
 #define NEARLY      5
 #define PAST        6
+#define SLEEP       7 // Deliberately 7 - Only used for EEPROM so doesn't alias with ITS_TIME
+
 #define ITS_TIME    7
 #define BIT(x)      (1 << (x))
 
@@ -100,6 +104,7 @@ uint16_t times[] = {
 	[BED]       = TIME(0x22, 0x00),
 	[NEARLY]    = TIME(0x00, 0x15),
 	[PAST]      = TIME(0x00, 0x15),
+	[SLEEP]     = TIME(0x01, 0x00),
 };
 
 struct timeband {
@@ -168,7 +173,7 @@ void build_timebands()
 	};
 	n_timebands++;
 
-	for (i = 0; i < N_COURSES; i++) {
+	for (i = 0; i < N_MEALS; i++) {
 		uint16_t tmp = time_sub(times[i], times[NEARLY]);
 		timebands[n_timebands] = (struct timeband){
 			.start = tmp,
@@ -191,7 +196,7 @@ void build_timebands()
 	}
 
 	timebands[n_timebands] = (struct timeband){
-		.start = time_add(times[BED], TIME(1, 0)),
+		.start = time_add(times[BED], times[SLEEP]),
 		.sentence = 0,
 	};
 	n_timebands++;
@@ -763,6 +768,8 @@ int handle_set_command(char *buf, char **saveptr)
 		ret = set_meal(DINNER, NULL, saveptr);
 	} else if (!strcmp(tok, "BED")) {
 		ret = set_meal(BED, NULL, saveptr);
+	} else if (!strcmp(tok, "SLEEP")) {
+		ret = set_meal(SLEEP, NULL, saveptr);
 	} else if (!strcmp(tok, "NEARLY")) {
 		ret = set_meal(NEARLY, NULL, saveptr);
 	} else if (!strcmp(tok, "PAST")) {
@@ -811,6 +818,8 @@ int handle_get_command(char *buf, char **saveptr)
 		ret = get_meal(DINNER);
 	} else if (!strcmp(tok, "BED")) {
 		ret = get_meal(BED);
+	} else if (!strcmp(tok, "SLEEP")) {
+		ret = get_meal(SLEEP);
 	} else if (!strcmp(tok, "NEARLY")) {
 		ret = get_meal(NEARLY);
 	} else if (!strcmp(tok, "PAST")) {
