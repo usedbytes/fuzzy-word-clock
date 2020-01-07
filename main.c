@@ -60,14 +60,14 @@
 #define BIT(x)      (1 << (x))
 
 const uint8_t channel_map[] = {
-	[BREAKFAST] =  2,
-	[LUNCH]     =  5,
-	[HOME]      =  7,
-	[DINNER]    =  3,
-	[BED]       =  6,
-	[NEARLY]    =  0,
-	[PAST]      =  4,
-	[ITS_TIME]  =  1,
+	LUNCH,
+	DINNER,
+	BED,
+	NEARLY,
+	PAST,
+	HOME,
+	BREAKFAST,
+	ITS_TIME,
 };
 
 const uint8_t sequence[] = {
